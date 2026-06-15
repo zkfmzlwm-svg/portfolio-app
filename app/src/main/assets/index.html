@@ -1,9 +1,7 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
+<html lang="ko"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v3.0</title>
+<title>포트폴리오 v3.3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -65,47 +63,50 @@ async function nativeGet(url){
 
 // ── 초기 데이터 ──
 const INIT={
-  ver:'3.0',exRate:1529,lastUpdated:'2026-06-09',apiKey:'',
+  ver:'3.2',exRate:1529,lastUpdated:'2026-06-12',apiKey:'',
   targets:{kr:25,us:25,bonds:20,gold:20,crypto:10},
   holdings:{
     kr_stocks:[
-      {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:150254,cur:119000,tags:['성장주','소형주'],eps:1782,indPer:50},
-      {id:'s2',name:'삼천당제약',code:'000250',qty:12.32,avg:469757,cur:291500,tags:['성장주','소형주'],eps:226,indPer:50},
-      {id:'s3',name:'LS ELECTRIC',code:'010120',qty:1.10,avg:296776,cur:226500,tags:['수출주','가치주','대형주'],eps:5000,indPer:20},
+      {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:150272,cur:127500,tags:['성장주','소형주'],eps:1782,indPer:50},
+      {id:'s2',name:'삼천당제약',code:'000250',qty:12.481152,avg:466942,cur:268500,tags:['성장주','소형주'],eps:226,indPer:50},
+      {id:'s3',name:'LS ELECTRIC',code:'010120',qty:1.190951,avg:291776,cur:237500,tags:['수출주','가치주','대형주'],eps:5000,indPer:20},
     ],
     kr_etfs:[
-      {id:'e1',name:'RISE AI전력인프라',code:'0101N0',qty:12,avg:24792,cur:21842,tags:['수출주','성장주']},
-      {id:'e2',name:'RISE K엔터',code:'388280',qty:18,avg:8214,cur:8180,tags:['내수주','성장주']},
-      {id:'e3',name:'TIGER 조선TOP10',code:'494670',qty:96,avg:28850,cur:27850,tags:['수출주','가치주']},
-      {id:'e4',name:'KODEX AI반도체장비',code:'471990',qty:14,avg:28941,cur:28885,tags:['수출주','성장주']},
-      {id:'e5',name:'KODEX 2차전지소재',code:'461950',qty:25,avg:7502,cur:6405,tags:['수출주','성장주']},
-      {id:'e6',name:'TIGER AI전력SMR',code:'0123G0',qty:19,avg:8345,cur:8575,tags:['수출주','성장주']},
-      {id:'e7',name:'KODEX 인버스',code:'114800',qty:26,avg:1170,cur:996,tags:['헤지']},
+      {id:'e1',name:'RISE AI전력인프라',code:'0101N0',qty:12,avg:24792,cur:22130,tags:['수출주','성장주']},
+      {id:'e2',name:'RISE K엔터',code:'388280',qty:18,avg:8214,cur:8895,tags:['내수주','성장주']},
+      {id:'e3',name:'TIGER 조선TOP10',code:'494670',qty:97,avg:28817,cur:27885,tags:['수출주','가치주']},
+      {id:'e4',name:'KODEX AI반도체장비',code:'471990',qty:14,avg:28941,cur:32680,tags:['수출주','성장주']},
+      {id:'e5',name:'KODEX 2차전지소재',code:'461950',qty:26,avg:7442,cur:6267,tags:['수출주','성장주']},
+      {id:'e6',name:'TIGER AI전력SMR',code:'0123G0',qty:20,avg:8308,cur:7685,tags:['수출주','성장주']},
+      {id:'e7',name:'KODEX 인버스',code:'114800',qty:26,avg:1170,cur:944,tags:['헤지']},
     ],
     us:[
-      {id:'u1',name:'JOBY',ticker:'JOBY',qty:48.26,avg:10.14,cur:11.07,tags:['성장주','소형주']},
-      {id:'u2',name:'CAH',ticker:'CAH',qty:1.27,avg:204.55,cur:201.00,tags:['가치주','대형주'],eps:10.31,indPer:17},
-      {id:'u3',name:'COR',ticker:'COR',qty:0.84,avg:297.81,cur:275.04,tags:['가치주','대형주']},
-      {id:'u4',name:'MCK',ticker:'MCK',qty:0.30,avg:823.57,cur:775.66,tags:['가치주','대형주']},
-      {id:'ue1',name:'SPY',ticker:'SPY',qty:1.16,avg:685.76,cur:753.18,tags:['가치주','대형주']},
-      {id:'ue2',name:'VOO',ticker:'VOO',qty:0.42,avg:655.36,cur:692.50,tags:['가치주','대형주']},
-      {id:'ue3',name:'JEPQ',ticker:'JEPQ',qty:4.16,avg:59.30,cur:60.47,tags:['성장주','대형주']},
+      {id:'u1',name:'JOBY',ticker:'JOBY',qty:48.506194,avg:10.1361,cur:9.47,tags:['성장주','소형주']},
+      {id:'u2',name:'CAH',ticker:'CAH',qty:1.279935,avg:204.6018,cur:221.16,tags:['가치주','대형주'],eps:10.31,indPer:17},
+      {id:'u3',name:'COR',ticker:'COR',qty:0.848330,avg:297.6111,cur:281.48,tags:['가치주','대형주']},
+      {id:'u4',name:'MCK',ticker:'MCK',qty:0.303117,avg:823.1645,cur:786.60,tags:['가치주','대형주']},
+      {id:'ue1',name:'SPY',ticker:'SPY',qty:1.195005,avg:687.2574,cur:739.58,tags:['가치주','대형주']},
+      {id:'ue2',name:'VOO',ticker:'VOO',qty:0.455692,avg:658.4644,cur:679.91,tags:['가치주','대형주']},
+      {id:'ue3',name:'JEPQ',ticker:'JEPQ',qty:4.526647,avg:59.3267,cur:59.65,tags:['성장주','대형주']},
     ],
     bonds:[
-      {id:'b1',name:'BND',ticker:'BND',qty:0.374,avgKRW:111833,curKRW:111771},
-      {id:'b2',name:'SHY',ticker:'SHY',qty:0.296,avgKRW:125388,curKRW:125401},
-      {id:'b3',name:'TLT',ticker:'TLT',qty:0.285,avgKRW:130565,curKRW:130710},
+      {id:'b1',name:'BND',ticker:'BND',qty:3.614052,avgKRW:111542,curKRW:112060,tags:['가치주']},
+      {id:'b2',name:'SHY',ticker:'SHY',qty:4.502682,avgKRW:125204,curKRW:125500,tags:['가치주']},
+      {id:'b3',name:'TLT',ticker:'TLT',qty:4.482107,avgKRW:129741,curKRW:131234,tags:['가치주']},
     ],
     gold:[
-      {id:'g1',name:'KRX금현물',code:'4GLD',qty:302,avg:14021,cur:14410},
-      {id:'g2',name:'1Q 은액티브',code:'396500',qty:41,avg:10698,cur:10350},
-      {id:'g3',name:'TIGER 금은선물H',code:'319870',qty:31,avg:20631,cur:18965},
-      {id:'g4',name:'TIGER 구리실물',code:'449170',qty:13,avg:16201,cur:17302},
+      {id:'g1',name:'KRX금현물',code:'4GLD',qty:302,avg:14021,cur:13495},
+      {id:'g2',name:'1Q 은액티브',code:'396500',qty:41,avg:10698,cur:9550},
+      {id:'g3',name:'TIGER 금은선물H',code:'319870',qty:31,avg:20631,cur:17875},
+      {id:'g4',name:'TIGER 구리실물',code:'449170',qty:14,avg:16251,cur:17285},
     ],
     crypto:[
-      {id:'c1',name:'BTC',upbit:'KRW-BTC',qty:0.0636551,avg:129119524,cur:96150000},
-      {id:'c2',name:'MANA',upbit:'KRW-MANA',qty:3367.288,avg:2237,cur:102},
-      {id:'c3',name:'BORA',upbit:'KRW-BORA',qty:1920.043,avg:490.3,cur:93},
+      {id:'c1',name:'BTC',upbit:'KRW-BTC',qty:0.06526082,avg:128240999,cur:95645994},
+      {id:'c2',name:'MANA',upbit:'KRW-MANA',qty:3367.28802912,avg:2237,cur:102},
+      {id:'c3',name:'BORA',upbit:'KRW-BORA',qty:1920.04308780,avg:490.3,cur:37},
+      {id:'c4',name:'ETH',upbit:'KRW-ETH',qty:0.58013773,avg:3179990,cur:2517999},
+      {id:'c5',name:'SOL',upbit:'KRW-SOL',qty:5.21631738,avg:255424,cur:100800},
+      {id:'c6',name:'USDT',upbit:'KRW-USDT',qty:10.5,avg:1486,cur:1502},
     ],
     watchlist:[
       {id:'w1',name:'HPSP',code:'403870',cur:54700,tags:['수출주','성장주','소형주'],eps:2104,indPer:32},
@@ -115,15 +116,125 @@ const INIT={
       {id:'w5',name:'SMCI',ticker:'SMCI',cur:40,tags:['성장주','소형주'],eps:2.44,indPer:20,usd:true},
       {id:'w6',name:'MRVL',ticker:'MRVL',cur:200,tags:['수출주','성장주','대형주'],eps:2.85,indPer:50,usd:true},
     ]
-  },
-  switching:{
-    retail:[{ym:'2025-11',val:3.8},{ym:'2025-12',val:3.6},{ym:'2026-01',val:4.0},{ym:'2026-02',val:3.7},{ym:'2026-03',val:3.9},{ym:'2026-04',val:4.3},{ym:'2026-05',val:null}],
-    ism:[{ym:'2025-10',val:56.5},{ym:'2025-11',val:58.2},{ym:'2025-12',val:59.8},{ym:'2026-01',val:62.0},{ym:'2026-02',val:64.5},{ym:'2026-03',val:67.1},{ym:'2026-04',val:70.2},{ym:'2026-05',val:null}]
-  }
+  },};
+
+// ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
+const TAG_MAP={
+  // 국내 개별주
+  's1':['성장주','소형주'],          // 에스티팜 (바이오 소형)
+  's2':['성장주','소형주'],          // 삼천당제약 (바이오 소형)
+  's3':['수출주','가치주','대형주'], // LS ELECTRIC (전력기기 수출 대형)
+  // 국내 ETF
+  'e1':['수출주','성장주'],          // RISE AI전력인프라
+  'e2':['내수주','성장주'],          // RISE K엔터
+  'e3':['수출주','가치주'],          // TIGER 조선TOP10
+  'e4':['수출주','성장주'],          // KODEX AI반도체장비
+  'e5':['수출주','성장주'],          // KODEX 2차전지소재
+  'e6':['수출주','성장주'],          // TIGER AI전력SMR
+  'e7':['헤지'],                    // KODEX 인버스
+  // 해외 개별주
+  'u1':['성장주','소형주'],          // JOBY (도심항공 소형)
+  'u2':['가치주','대형주'],          // CAH (의약품유통 가치 대형)
+  'u3':['가치주','대형주'],          // COR (의약품유통 가치 대형)
+  'u4':['가치주','대형주'],          // MCK (의약품유통 가치 대형)
+  // 해외 ETF
+  'ue1':['가치주','대형주'],         // SPY (S&P500)
+  'ue2':['가치주','대형주'],         // VOO (S&P500)
+  'ue3':['성장주','대형주'],         // JEPQ (NASDAQ 커버드콜)
+  // 채권
+  'b1':['가치주'],                  // BND (종합채권)
+  'b2':['가치주'],                  // SHY (단기국채)
+  'b3':['가치주'],                  // TLT (장기국채)
+  // 워치리스트
+  'w1':['수출주','성장주','소형주'], // HPSP (반도체장비 소형)
+  'w2':['수출주','가치주','대형주'], // 삼성전자
+  'w3':['수출주','성장주','대형주'], // SK하이닉스
+  'w4':['수출주','성장주','대형주'], // NVDA
+  'w5':['성장주','소형주'],          // SMCI
+  'w6':['수출주','성장주','대형주'], // MRVL
 };
 
+function autoTagByName(name,isUs){
+  const n=(name||'').toLowerCase();
+  if(['인버스','곱버스','inverse','short'].some(k=>n.includes(k)))return['헤지'];
+  const tags=[];
+  if(['반도체','전자','디스플레이','자동차','조선','화학','배터리','이차전지','ai전','smr','원자력','전력인프라','방산','chip','semiconductor'].some(k=>n.includes(k)))tags.push('수출주');
+  if(['은행','금융','통신','유통','소매','음식','식품','건설','부동산','헬스케어','엔터','미디어','k엔터'].some(k=>n.includes(k)))tags.push('내수주');
+  if(['삼성','현대','포스코','s&p','sp500','kospi','top10','대형','voo','spy'].some(k=>n.includes(k)))tags.push('대형주');
+  if(['소형','중소','스몰','small'].some(k=>n.includes(k)))tags.push('소형주');
+  if(['바이오','헬스','biotech','joby','lunar','arkk','성장','신성장'].some(k=>n.includes(k)))tags.push('성장주');
+  if(['배당','dividend','income','채권','bond','treasury','bnd','shy','tlt','국고채','우량회사채'].some(k=>n.includes(k)))tags.push('가치주');
+  if(!tags.some(t=>['성장주','가치주'].includes(t)))tags.push(isUs?'성장주':'성장주');
+  return tags.length?tags:['성장주'];
+}
+
+const VALID6=new Set(['수출주','내수주','성장주','가치주','대형주','소형주','헤지']);
+
+function updateToV32(p){
+  // 2026-06-12 사진 기준 전체 업데이트
+  const U={
+    's1':{qty:70,avg:150272,cur:127500},
+    's2':{qty:12.481152,avg:466942,cur:268500},
+    's3':{qty:1.190951,avg:291776,cur:237500},
+    'e1':{qty:12,avg:24792,cur:22130},
+    'e2':{qty:18,avg:8214,cur:8895},
+    'e3':{qty:97,avg:28817,cur:27885},
+    'e4':{qty:14,avg:28941,cur:32680},
+    'e5':{qty:26,avg:7442,cur:6267},
+    'e6':{qty:20,avg:8308,cur:7685},
+    'e7':{qty:26,avg:1170,cur:944},
+    'u1':{qty:48.506194,avg:10.1361,cur:9.47},
+    'u2':{qty:1.279935,avg:204.6018,cur:221.16},
+    'u3':{qty:0.848330,avg:297.6111,cur:281.48},
+    'u4':{qty:0.303117,avg:823.1645,cur:786.60},
+    'ue1':{qty:1.195005,avg:687.2574,cur:739.58},
+    'ue2':{qty:0.455692,avg:658.4644,cur:679.91},
+    'ue3':{qty:4.526647,avg:59.3267,cur:59.65},
+    'b1':{qty:3.614052,avgKRW:111542,curKRW:112060},
+    'b2':{qty:4.502682,avgKRW:125204,curKRW:125500},
+    'b3':{qty:4.482107,avgKRW:129741,curKRW:131234},
+    'g1':{qty:302,avg:14021,cur:13495},
+    'g2':{qty:41,avg:10698,cur:9550},
+    'g3':{qty:31,avg:20631,cur:17875},
+    'g4':{qty:14,avg:16251,cur:17285},
+    'c1':{qty:0.06526082,avg:128240999,cur:95645994},
+    'c2':{qty:3367.28802912,avg:2237,cur:102},
+    'c3':{qty:1920.04308780,avg:490.3,cur:37},
+  };
+  const all=[...p.holdings.kr_stocks,...p.holdings.kr_etfs,...p.holdings.us,...p.holdings.bonds,...p.holdings.gold,...p.holdings.crypto];
+  all.forEach(h=>{if(U[h.id])Object.assign(h,U[h.id]);});
+  // ETH/SOL/USDT 신규 추가
+  const newCoins=[
+    {id:'c4',name:'ETH',upbit:'KRW-ETH',qty:0.58013773,avg:3179990,cur:2517999},
+    {id:'c5',name:'SOL',upbit:'KRW-SOL',qty:5.21631738,avg:255424,cur:100800},
+    {id:'c6',name:'USDT',upbit:'KRW-USDT',qty:10.5,avg:1486,cur:1502},
+  ];
+  newCoins.forEach(nc=>{if(!p.holdings.crypto.find(h=>h.id===nc.id))p.holdings.crypto.push(nc);});
+  p.ver='3.3';p.lastUpdated='2026-06-12';
+  return p;
+}
+
+function migratePortfolio(p){
+  const lists=[p.holdings.kr_stocks,p.holdings.kr_etfs,p.holdings.us,p.holdings.bonds,p.holdings.watchlist||[]];
+  lists.forEach(list=>list.forEach(h=>{
+    // 알려진 ID → 항상 정확한 태그로 강제 덮어씀 (구버전 태그 제거)
+    if(TAG_MAP[h.id]){
+      h.tags=TAG_MAP[h.id];
+    }
+    // 태그 없거나 6분류 아닌 값만 있으면 자동 분류
+    else if(!h.tags||!h.tags.length||!h.tags.some(t=>VALID6.has(t))){
+      h.tags=autoTagByName(h.name,!!(h.ticker&&!h.code));
+    }
+  }));
+  // v3.2 미만: 사진 데이터(수량/단가) 강제 업데이트
+  if(!p.ver||p.ver<'3.2')updateToV32(p);
+  p.ver='3.3';
+  return p;
+}
+
 // ── 상태 ──
-let portfolio=JSON.parse(Store.get('porto')||JSON.stringify(INIT));
+let portfolio=migratePortfolio(JSON.parse(Store.get('porto')||JSON.stringify(INIT)));
+Store.set('porto',JSON.stringify(portfolio)); // 마이그레이션 결과 즉시 저장
 if(!portfolio.switching)portfolio.switching=INIT.switching;
 if(!portfolio.holdings.watchlist)portfolio.holdings.watchlist=[];
 let tab='home',catH='kr',filterP='all',monthly=200,loadingPrice=false,logs=[];
@@ -383,7 +494,7 @@ function holdingsScreen(){
             <div style="flex:1;min-width:0">
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
                 <span style="font-size:15px;font-weight:700;color:${T.text}">${h.name}</span>
-                ${(!isAlt&&!isCrypto)?renderTags(h.tags||[]):''}
+                ${(!isAlt)?renderTags(h.tags||[]):''}
               </div>
               ${!isWatch?`<span class="mono" style="font-size:11px;color:${T.text3}">× ${h.qty<1?h.qty.toFixed(6):h.qty.toFixed(2)}</span>`:''}
             </div>
@@ -414,15 +525,41 @@ function switchingScreen(){
     const sc=signal==='bull'?T.green:signal==='forming'?T.amber:signal==='bear'?T.red:T.text3;
     const sl=signal==='bull'?'🟢 충족':signal==='forming'?'🔶 형성중':signal==='bear'?'🔴 미충족':'⏳ 부족';
     const maMap={};ma.forEach(m=>{maMap[m.ym]=m.ma3;});
+    // 최근 MA3 추세 계산 (연속 상승 횟수)
+    const risingCount=ma.slice(-4).reduce((cnt,_,i,arr)=>i>0&&arr[i].ma3>arr[i-1].ma3?cnt+1:cnt,0);
     return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.border};margin-bottom:10px;overflow:hidden">
       <div style="padding:12px 16px;border-bottom:1px solid ${T.border};display:flex;justify-content:space-between;align-items:center">
-        <div><div style="font-size:14px;font-weight:700;color:${T.text}">${title}</div><div style="font-size:11px;color:${T.text3};margin-top:2px">${desc}</div></div>
-        <span style="font-size:12px;color:${sc};background:${sc}15;padding:4px 10px;border-radius:20px;font-weight:700">${sl}</span>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:${T.text}">${title}</div>
+          <div style="font-size:11px;color:${T.text3};margin-top:2px">${desc}</div>
+        </div>
+        <div style="text-align:right">
+          <span style="font-size:12px;color:${sc};background:${sc}15;padding:4px 10px;border-radius:20px;font-weight:700;display:block;margin-bottom:3px">${sl}</span>
+          <span style="font-size:10px;color:${T.text3}">MA3 연속↑ ${risingCount}회</span>
+        </div>
       </div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-        <tr style="background:${T.bg2}"><td style="padding:8px 12px;color:${T.text3}">월</td><td style="padding:8px 12px;color:${T.text3};text-align:right">실제값${unit}</td><td style="padding:8px 12px;color:${T.text3};text-align:right">MA3</td><td style="padding:8px 12px;color:${T.text3};text-align:right">추세</td></tr>
-        ${data.slice(-6).map((d,i,arr)=>{const mv=maMap[d.ym],pm=i>0?maMap[arr[i-1].ym]:null,tr=mv&&pm?(mv>pm?'↑':mv<pm?'↓':'→'):'-',tc=tr==='↑'?T.green:tr==='↓'?T.red:T.text3;
-          return `<tr style="border-top:1px solid ${T.border}${d.val===null?';opacity:.6':''}"><td style="padding:8px 12px;color:${T.text}">${d.ym}</td><td style="padding:8px 12px;text-align:right"><input type="number" value="${d.val===null?'':d.val}" placeholder="—" onchange="updateSwitch('${key}','${d.ym}',this.value)" style="width:70px;background:transparent;border:none;color:${T.text};text-align:right;font-size:12px;font-family:monospace;outline:none"></td><td class="mono" style="padding:8px 12px;text-align:right;color:${T.text2}">${mv?mv.toFixed(2):'-'}</td><td class="mono" style="padding:8px 12px;text-align:right;color:${tc};font-size:14px">${tr}</td></tr>`;}).join('')}
+        <tr style="background:${T.bg2}">
+          <td style="padding:8px 12px;color:${T.text3}">월</td>
+          <td style="padding:8px 12px;color:${T.text3};text-align:right">실제값${unit}</td>
+          <td style="padding:8px 12px;color:${T.text3};text-align:right">MA3</td>
+          <td style="padding:8px 12px;color:${T.text3};text-align:right">추세</td>
+        </tr>
+        ${data.slice(-6).map((d,i,arr)=>{
+          const mv=maMap[d.ym],pm=i>0?maMap[arr[i-1].ym]:null;
+          const tr=mv&&pm?(mv>pm?'↑':mv<pm?'↓':'→'):'-';
+          const tc=tr==='↑'?T.green:tr==='↓'?T.red:T.text3;
+          return `<tr style="border-top:1px solid ${T.border}${d.val===null?';opacity:.55':''}">
+            <td style="padding:8px 12px;color:${d.val===null?T.text3:T.text};font-weight:${d.val===null?400:600}">${d.ym}</td>
+            <td style="padding:8px 12px;text-align:right">
+              <input type="number" value="${d.val===null?'':d.val}" placeholder="—"
+                onchange="updateSwitch('${key}','${d.ym}',this.value)"
+                style="width:72px;background:${T.bg3};border:1px solid ${T.border};border-radius:6px;color:${T.text};text-align:right;font-size:12px;font-family:monospace;padding:4px 6px;outline:none">
+            </td>
+            <td class="mono" style="padding:8px 12px;text-align:right;color:${mv?T.text2:T.text3}">${mv?mv.toFixed(2):'-'}</td>
+            <td class="mono" style="padding:8px 12px;text-align:right;color:${tc};font-size:15px;font-weight:700">${tr}</td>
+          </tr>`;
+        }).join('')}
       </table></div>
       <div style="padding:10px 16px;border-top:1px solid ${T.border};display:flex;gap:8px">
         <button onclick="addSwitchMonth('${key}')" class="tap" style="flex:1;padding:9px;background:${T.bg2};color:${T.text2};border-radius:10px;font-size:13px">+ 월 추가</button>
@@ -431,13 +568,20 @@ function switchingScreen(){
     </div>`;
   }
   return `<div class="scr fade" style="padding:0 16px 24px;height:100%">
-    <div style="background:${sig.color}0F;border:1px solid ${sig.color}33;border-radius:16px;padding:18px;margin-bottom:14px;text-align:center">
-      <div style="font-size:22px;font-weight:800;color:${sig.color};margin-bottom:6px">${sig.label}</div>
-      <div style="font-size:13px;color:${T.text2}">${sig.sub}</div>
-      <div style="margin-top:14px;display:flex;gap:16px;justify-content:center;font-size:12px">
-        <div style="text-align:center"><div style="color:${T.text3};margin-bottom:3px">소매판매</div><div style="color:${getSignal(portfolio.switching.retail)==='bull'?T.green:T.amber};font-weight:700">${getSignal(portfolio.switching.retail)==='bull'?'🟢 충족':getSignal(portfolio.switching.retail)==='forming'?'🔶 형성중':'🔴 미충족'}</div></div>
-        <div style="width:1px;background:${T.border}"></div>
-        <div style="text-align:center"><div style="color:${T.text3};margin-bottom:3px">ISM 가격지수</div><div style="color:${getSignal(portfolio.switching.ism)==='bull'?T.green:T.amber};font-weight:700">${getSignal(portfolio.switching.ism)==='bull'?'🟢 충족':getSignal(portfolio.switching.ism)==='forming'?'🔶 형성중':'🔴 미충족'}</div></div>
+    <!-- 종합 신호 (id 있어야 부분 업데이트 가능) -->
+    <div id="switchSignalBox" style="margin-bottom:12px">${renderSignalBox(sig)}</div>
+    <!-- 빠른 업데이트 버튼 -->
+    <button onclick="showSwitchUpdateModal()" class="tap"
+      style="width:100%;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700;margin-bottom:14px">
+      📊 이번 달 지표 업데이트
+    </button>
+    <!-- 전략 설명 -->
+    <div style="background:${T.card};border-radius:14px;padding:12px 16px;border:1px solid ${T.border};margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:${T.text};margin-bottom:6px">듀얼 스위칭 전략 (홍춘욱)</div>
+      <div style="font-size:12px;color:${T.text2};line-height:1.7">
+        두 지표 <b style="color:${T.teal}">모두 MA3 3개월 연속 ↑</b> → 🟢 경기 강세<br>
+        <span style="color:${T.teal}">수출주·가치주·대형주 ▲</span> / 내수주·성장주·소형주 ▼<br>
+        <span style="color:${T.text3};font-size:11px">소매판매: 전전월치 발표 (6월→4월) · ISM: 전월치 발표 (6월→5월)</span>
       </div>
     </div>
     ${renderInd('retail','🛍 미국 소매판매 증가율 (YoY)','%','전년동기대비 3개월 이동평균')}
@@ -504,7 +648,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};margin-bottom:10px">증권 앱 캡처 화면을 업로드하면 AI가 종목·수량·평균단가를 자동 입력합니다</div>
       <div style="margin-bottom:10px"><div style="font-size:12px;color:${T.text3};margin-bottom:6px">Claude API 키 (사진 인식용)</div><input type="text" id="apiKeyIn" placeholder="sk-ant-..." value="${portfolio.apiKey||''}"><button onclick="saveApiKey()" class="tap" style="width:100%;margin-top:8px;padding:10px;background:${T.bg3};color:${T.text2};border-radius:10px;font-size:13px">API 키 저장</button></div>
       <label style="display:block;width:100%;padding:13px;background:${T.blue};color:#fff;border-radius:12px;text-align:center;font-size:14px;font-weight:700;cursor:pointer">📷 사진 업로드해서 종목 인식<input type="file" accept="image/*" onchange="handlePhotoImport(this)" style="display:none"></label>`)}
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v3.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v3.3</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -609,10 +753,19 @@ function deleteHolding(cat,id){
   Store.set('porto',JSON.stringify(portfolio));render();
 }
 
+let switchSaveTimer;
 function updateSwitch(key,ym,val){
   const idx=portfolio.switching[key].findIndex(d=>d.ym===ym);
   if(idx>=0)portfolio.switching[key][idx].val=val===''?null:parseFloat(val);
-  Store.set('porto',JSON.stringify(portfolio));render();
+  // 저장은 즉시, render는 500ms 디바운스 (입력 중 포커스 소실 방지)
+  Store.set('porto',JSON.stringify(portfolio));
+  clearTimeout(switchSaveTimer);
+  switchSaveTimer=setTimeout(()=>{
+    // 신호 표시만 부분 업데이트
+    const sig=overallSignal();
+    const el=document.getElementById('switchSignalBox');
+    if(el)el.innerHTML=renderSignalBox(sig);
+  },600);
 }
 function addSwitchMonth(key){const data=portfolio.switching[key],last=data[data.length-1].ym,[y,m]=last.split('-').map(Number),nm=m===12?1:m+1,ny=m===12?y+1:y,nYm=ny+'-'+(nm<10?'0':'')+nm;if(!data.find(d=>d.ym===nYm))data.push({ym:nYm,val:null});Store.set('porto',JSON.stringify(portfolio));render();}
 function removeSwitchMonth(key){if(portfolio.switching[key].length>4)portfolio.switching[key].pop();Store.set('porto',JSON.stringify(portfolio));render();}
@@ -640,11 +793,134 @@ async function handlePhotoImport(input){
 }
 
 function showStockConfirm(items){
+  window._pendingPhotoItems=items;
   showModal(`<div class="sheet-handle"></div><div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:14px">인식된 종목 (${items.length}개)</div>
-    ${items.map(it=>`<div style="background:${T.bg2};border-radius:10px;padding:12px;margin-bottom:8px"><div style="font-size:14px;font-weight:700;color:${T.text}">${it.name} <span style="font-size:11px;color:${T.text3}">${it.code}</span></div><div class="mono" style="font-size:13px;color:${T.text2};margin-top:4px">수량 ${it.qty} · 평균 ${it.isKr?won(it.avg):usd(it.avg)}</div></div>`).join('')}
-    <div style="display:flex;gap:10px;margin-top:14px">${btn('적용하기','applyPhotoStocks('+JSON.stringify(items).replace(/"/g,"'")+')',T.teal,'flex:1')}<button onclick="closeModal()" class="tap" style="flex:1;padding:13px;background:${T.bg3};color:${T.text2};border-radius:12px">취소</button></div>`);
+    ${items.map(it=>`<div style="background:${T.bg2};border-radius:10px;padding:12px;margin-bottom:8px"><div style="font-size:14px;font-weight:700;color:${T.text}">${it.name} <span style="font-size:11px;color:${T.text3}">${it.code||''}</span></div><div class="mono" style="font-size:13px;color:${T.text2};margin-top:4px">수량 ${it.qty} · 평균 ${it.isKr?won(it.avg):usd(it.avg)}</div></div>`).join('')}
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button onclick="applyPhotoStocks()" class="tap" style="flex:1;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">적용하기</button>
+      <button onclick="closeModal()" class="tap" style="flex:1;padding:13px;background:${T.bg3};color:${T.text2};border-radius:12px">취소</button>
+    </div>`);
 }
-function applyPhotoStocks(items){
+
+function applyPhotoStocks(){
+  const items=window._pendingPhotoItems;
+  if(!items)return;
+  items.forEach(it=>{
+    const id='p'+Date.now()+Math.random().toString(36).slice(2,5);
+    if(it.isKr){
+      const ex=[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs].find(h=>h.code===it.code||h.name===it.name);
+      if(ex){ex.qty=it.qty;ex.avg=it.avg;}
+      else portfolio.holdings.kr_stocks.push({id,name:it.name,code:it.code,qty:it.qty,avg:it.avg,cur:it.avg,tags:['성장주']});
+    }else{
+      const ex=portfolio.holdings.us.find(h=>h.ticker===it.code||h.name===it.name);
+      if(ex){ex.qty=it.qty;ex.avg=it.avg;}
+      else portfolio.holdings.us.push({id,name:it.name,ticker:it.code,qty:it.qty,avg:it.avg,cur:it.avg,tags:['성장주']});
+    }
+  });
+  Store.set('porto',JSON.stringify(portfolio));
+  closeModal();
+  alert('✅ '+items.length+'개 종목 반영 완료');
+  render();
+}
+
+function renderSignalBox(sig){
+  return `<div style="background:${sig.color}0F;border:1px solid ${sig.color}33;border-radius:16px;padding:18px;text-align:center">
+    <div style="font-size:22px;font-weight:800;color:${sig.color};margin-bottom:6px">${sig.label}</div>
+    <div style="font-size:13px;color:${T.text2}">${sig.sub}</div>
+    <div style="margin-top:14px;display:flex;gap:16px;justify-content:center;font-size:12px">
+      <div style="text-align:center">
+        <div style="color:${T.text3};margin-bottom:3px">소매판매</div>
+        <div style="color:${getSignal(portfolio.switching.retail)==='bull'?T.green:getSignal(portfolio.switching.retail)==='forming'?T.amber:T.red};font-weight:700">
+          ${getSignal(portfolio.switching.retail)==='bull'?'🟢 충족':getSignal(portfolio.switching.retail)==='forming'?'🔶 형성중':'🔴 미충족'}
+        </div>
+      </div>
+      <div style="width:1px;background:${T.border}"></div>
+      <div style="text-align:center">
+        <div style="color:${T.text3};margin-bottom:3px">ISM 가격지수</div>
+        <div style="color:${getSignal(portfolio.switching.ism)==='bull'?T.green:getSignal(portfolio.switching.ism)==='forming'?T.amber:T.red};font-weight:700">
+          ${getSignal(portfolio.switching.ism)==='bull'?'🟢 충족':getSignal(portfolio.switching.ism)==='forming'?'🔶 형성중':'🔴 미충족'}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function showSwitchUpdateModal(){
+  const now=new Date();
+  // 소매판매는 전전월 데이터가 당월 발표 (예: 6월에 4월치 발표)
+  const retailLag=new Date(now.getFullYear(),now.getMonth()-2,1);
+  const ismLag=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const fmtYM=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const rYM=fmtYM(retailLag),iYM=fmtYM(ismLag);
+  const rLast=portfolio.switching.retail.filter(d=>d.val!==null).slice(-1)[0];
+  const iLast=portfolio.switching.ism.filter(d=>d.val!==null).slice(-1)[0];
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:4px">📊 지표 업데이트</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:18px">최신 발표 데이터를 입력하세요</div>
+    <div style="background:${T.bg2};border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:700;color:${T.teal};margin-bottom:10px">🛍 미국 소매판매 YoY (%)</div>
+      <div style="font-size:11px;color:${T.text3};margin-bottom:8px">
+        입력 월: <span style="color:${T.text}">${rYM}</span>
+        ${rLast?` · 직전값: <span style="color:${T.amber}">${rLast.val}% (${rLast.ym})</span>`:''}
+      </div>
+      <input type="number" id="retailInput" placeholder="예: 4.9" step="0.1"
+        style="font-size:18px;text-align:center;font-family:monospace">
+    </div>
+    <div style="background:${T.bg2};border-radius:12px;padding:14px;margin-bottom:18px">
+      <div style="font-size:13px;font-weight:700;color:${T.blue};margin-bottom:10px">🏭 ISM 제조업 가격지수 (pt)</div>
+      <div style="font-size:11px;color:${T.text3};margin-bottom:8px">
+        입력 월: <span style="color:${T.text}">${iYM}</span>
+        ${iLast?` · 직전값: <span style="color:${T.amber}">${iLast.val}pt (${iLast.ym})</span>`:''}
+      </div>
+      <input type="number" id="ismInput" placeholder="예: 82.1" step="0.1"
+        style="font-size:18px;text-align:center;font-family:monospace">
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="saveSwitchUpdate('${rYM}','${iYM}')" class="tap"
+        style="flex:1;padding:14px;background:${T.teal};color:#000;border-radius:12px;font-size:15px;font-weight:700">저장</button>
+      <button onclick="closeModal()" class="tap"
+        style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('retailInput')?.focus(),300);
+}
+
+function saveSwitchUpdate(rYM,iYM){
+  const rv=document.getElementById('retailInput')?.value;
+  const iv=document.getElementById('ismInput')?.value;
+  let saved=0;
+  if(rv!==''&&rv!=null){
+    const rVal=parseFloat(rv);
+    if(!isNaN(rVal)){
+      const idx=portfolio.switching.retail.findIndex(d=>d.ym===rYM);
+      if(idx>=0)portfolio.switching.retail[idx].val=rVal;
+      else portfolio.switching.retail.push({ym:rYM,val:rVal});
+      portfolio.switching.retail.sort((a,b)=>a.ym.localeCompare(b.ym));
+      saved++;
+    }
+  }
+  if(iv!==''&&iv!=null){
+    const iVal=parseFloat(iv);
+    if(!isNaN(iVal)){
+      const idx=portfolio.switching.ism.findIndex(d=>d.ym===iYM);
+      if(idx>=0)portfolio.switching.ism[idx].val=iVal;
+      else portfolio.switching.ism.push({ym:iYM,val:iVal});
+      portfolio.switching.ism.sort((a,b)=>a.ym.localeCompare(b.ym));
+      saved++;
+    }
+  }
+  if(saved>0){
+    Store.set('porto',JSON.stringify(portfolio));
+    closeModal();
+    tab='switching';
+    render();
+  }else{
+    alert('값을 입력해주세요.');
+  }
+}
+
+function applyPhotoStocks(){
+  const items=window._pendingPhotoItems;
+  if(!items){return;}
   items.forEach(it=>{
     const id='p'+Date.now()+Math.random().toString(36).slice(2,5);
     if(it.isKr){const ex=[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs].find(h=>h.code===it.code||h.name===it.name);if(ex){ex.qty=it.qty;ex.avg=it.avg;}else portfolio.holdings.kr_stocks.push({id,name:it.name,code:it.code,qty:it.qty,avg:it.avg,cur:it.avg,tags:['성장주']});}
@@ -695,5 +971,5 @@ function render(){
 
 render();
 </script>
-</body>
-</html>
+
+</body></html>
