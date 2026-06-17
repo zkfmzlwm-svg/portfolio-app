@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
                         conn.setRequestProperty("User-Agent",
                             "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/108.0.0.0");
                         conn.setRequestProperty("Accept", "application/json, text/plain, */*");
+                        conn.setRequestProperty("Referer", "https://m.stock.naver.com/");
                         conn.setConnectTimeout(8000);
                         conn.setReadTimeout(8000);
                         conn.setInstanceFollowRedirects(true);
@@ -97,8 +98,22 @@ public class MainActivity extends Activity {
             }
         });
 
-        webView.setWebViewClient(new WebViewClient());
-        webView.loadUrl("file:///android_asset/index.html");
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                if (url.startsWith("file://")) {
+                    v.loadUrl(url);
+                    return true;
+                }
+                // http/https → 시스템 브라우저로 열기
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                    return true;
+                }
+                return false;
+            }
+        });        webView.loadUrl("file:///android_asset/index.html");
     }
 
     @Override
