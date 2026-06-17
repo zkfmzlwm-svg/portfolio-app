@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v3.5</title>
+<title>포트폴리오 v3.6</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -98,7 +98,7 @@ const INIT={
     ],
     gold:[
       {id:'g1',name:'KRX금현물',code:'4GLD',qty:302,avg:14021,cur:13495},
-      {id:'g2',name:'1Q 은액티브',code:'396500',qty:41,avg:10698,cur:9550},
+      {id:'g2',name:'1Q 은액티브',code:'480020',qty:41,avg:10698,cur:9550},
       {id:'g3',name:'TIGER 금은선물H',code:'319870',qty:31,avg:20631,cur:17875},
       {id:'g4',name:'TIGER 구리실물',code:'449170',qty:14,avg:16251,cur:17285},
     ],
@@ -111,12 +111,30 @@ const INIT={
       {id:'c6',name:'USDT',upbit:'KRW-USDT',qty:10.5,avg:1486,cur:1502},
     ],
     watchlist:[
-      {id:'w1',name:'HPSP',code:'403870',cur:54700,tags:['수출주','성장주','소형주'],eps:2104,indPer:32},
-      {id:'w2',name:'삼성전자',code:'005930',cur:329000,tags:['수출주','가치주','대형주'],eps:46900,indPer:15},
-      {id:'w3',name:'SK하이닉스',code:'000660',cur:233300,tags:['수출주','성장주','대형주'],eps:290000,indPer:15},
-      {id:'w4',name:'NVDA',ticker:'NVDA',cur:204.04,tags:['수출주','성장주','대형주'],eps:6.53,indPer:40,usd:true},
-      {id:'w5',name:'SMCI',ticker:'SMCI',cur:40,tags:['성장주','소형주'],eps:2.44,indPer:20,usd:true},
-      {id:'w6',name:'MRVL',ticker:'MRVL',cur:200,tags:['수출주','성장주','대형주'],eps:2.85,indPer:50,usd:true},
+      // 대형주 (시총 상위 우량주)
+      {id:'w1',name:'삼성전자',code:'005930',cur:329000,tags:['수출주','대형주'],eps:46900,indPer:15},
+      {id:'w2',name:'SK하이닉스',code:'000660',cur:233300,tags:['수출주','대형주'],eps:290000,indPer:15},
+      {id:'w3',name:'LG에너지솔루션',code:'373220',cur:380000,tags:['수출주','대형주'],eps:8500,indPer:30},
+      // 소형주 (중소형 성장)
+      {id:'w4',name:'HPSP',code:'403870',cur:54700,tags:['수출주','소형주'],eps:2104,indPer:32},
+      {id:'w5',name:'리노공업',code:'058470',cur:175000,tags:['수출주','소형주'],eps:6800,indPer:25},
+      {id:'w6',name:'파크시스템스',code:'140860',cur:215000,tags:['수출주','소형주'],eps:5400,indPer:35},
+      // 가치주 (저PER·고배당)
+      {id:'w7',name:'KB금융',code:'105560',cur:95000,tags:['내수주','가치주','대형주'],eps:16500,indPer:7},
+      {id:'w8',name:'기아',code:'000270',cur:105000,tags:['수출주','가치주','대형주'],eps:21000,indPer:5},
+      {id:'w9',name:'HD현대중공업',code:'329180',cur:380000,tags:['수출주','가치주','대형주'],eps:12000,indPer:18},
+      // 성장주 (고PER·미래성장)
+      {id:'w10',name:'에코프로비엠',code:'247540',cur:135000,tags:['수출주','성장주'],eps:1500,indPer:40},
+      {id:'w11',name:'알테오젠',code:'196170',cur:380000,tags:['성장주','소형주'],eps:3200,indPer:60},
+      {id:'w12',name:'펄어비스',code:'263750',cur:42000,tags:['내수주','성장주','소형주'],eps:800,indPer:45},
+      // 내수주 (국내 소비·서비스)
+      {id:'w13',name:'KT&G',code:'033780',cur:128000,tags:['내수주','가치주','대형주'],eps:9500,indPer:13},
+      {id:'w14',name:'CJ제일제당',code:'097950',cur:280000,tags:['내수주','가치주'],eps:24000,indPer:11},
+      {id:'w15',name:'하이트진로',code:'000080',cur:22000,tags:['내수주','가치주','소형주'],eps:1300,indPer:16},
+      // 수출주 (글로벌 매출 중심)
+      {id:'w16',name:'현대차',code:'005380',cur:245000,tags:['수출주','가치주','대형주'],eps:42000,indPer:6},
+      {id:'w17',name:'POSCO홀딩스',code:'005490',cur:380000,tags:['수출주','가치주','대형주'],eps:18000,indPer:20},
+      {id:'w18',name:'한화에어로스페이스',code:'012450',cur:780000,tags:['수출주','성장주','대형주'],eps:22000,indPer:35},
     ]
   },
   switching:{
@@ -133,7 +151,7 @@ const INIT={
       {ym:'2026-05',val:82.1}
     ]
   },
-  ver:'3.5'
+  ver:'3.6'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -163,13 +181,7 @@ const TAG_MAP={
   'b1':['가치주'],                  // BND (종합채권)
   'b2':['가치주'],                  // SHY (단기국채)
   'b3':['가치주'],                  // TLT (장기국채)
-  // 워치리스트
-  'w1':['수출주','성장주','소형주'], // HPSP (반도체장비 소형)
-  'w2':['수출주','가치주','대형주'], // 삼성전자
-  'w3':['수출주','성장주','대형주'], // SK하이닉스
-  'w4':['수출주','성장주','대형주'], // NVDA
-  'w5':['성장주','소형주'],          // SMCI
-  'w6':['수출주','성장주','대형주'], // MRVL
+  // 워치리스트는 INIT에서 tags 직접 지정 (TAG_MAP 미사용)
 };
 
 function autoTagByName(name,isUs){
@@ -234,6 +246,10 @@ function updateToV32(p){
 }
 
 function migratePortfolio(p){
+  // v3.6 미만: 워치리스트를 6분류 대표종목으로 강제 교체
+  if(!p.ver||p.ver<'3.6'){
+    p.holdings.watchlist=JSON.parse(JSON.stringify(INIT.holdings.watchlist));
+  }
   const lists=[p.holdings.kr_stocks,p.holdings.kr_etfs,p.holdings.us,p.holdings.bonds,p.holdings.watchlist||[]];
   lists.forEach(list=>list.forEach(h=>{
     // 알려진 ID → 항상 정확한 태그로 강제 덮어씀 (구버전 태그 제거)
@@ -247,7 +263,7 @@ function migratePortfolio(p){
   }));
   // v3.2 미만: 사진 데이터(수량/단가) 강제 업데이트
   if(!p.ver||p.ver<'3.2')updateToV32(p);
-  p.ver='3.5';
+  p.ver='3.6';
   return p;
 }
 
@@ -775,7 +791,7 @@ function settingsScreen(){
         </div>
       </div>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v3.5</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v3.6</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -798,7 +814,7 @@ function showEditModal(cat,id){
       ${!isWatch&&!isBond?`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">EPS (선택)</div><input type="number" id="eEps" value="${h.eps||''}"></div>
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">업종 기준 PER (선택)</div><input type="number" id="eIndPer" value="${h.indPer||''}"></div>`:''}
     </div>
-    ${btn('저장','saveEdit("'+cat+'","'+id+'")',T.teal)}
+    ${btn('저장',"saveEdit('"+cat+"','"+id+"')",T.teal)}
     <button onclick="closeModal()" class="tap" style="width:100%;padding:12px;background:${T.bg2};color:${T.text2};border-radius:12px;margin-top:8px;font-size:14px">취소</button>`);
 }
 
@@ -839,7 +855,7 @@ function showAddModal(cat){
         <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">수량</div><input type="number" id="addQty" placeholder="0" step="0.0001"></div>
         <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">평균단가</div><input type="number" id="addAvg" placeholder="0"></div>
       </div>`:''}
-      ${btn('추가하기','confirmAdd("'+cat+'")',T.teal)}
+      ${btn('추가하기',"confirmAdd('"+cat+"')",T.teal)}
     </div>
     <button onclick="closeModal()" class="tap" style="width:100%;padding:12px;background:${T.bg2};color:${T.text2};border-radius:12px;margin-top:8px;font-size:14px">취소</button>`);
   setTimeout(()=>document.getElementById('searchQ')?.focus(),300);
