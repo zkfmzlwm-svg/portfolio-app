@@ -57,7 +57,6 @@ public class MainActivity extends Activity {
                         conn.setRequestProperty("User-Agent",
                             "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/108.0.0.0");
                         conn.setRequestProperty("Accept", "application/json, text/plain, */*");
-                        conn.setRequestProperty("Referer", "https://m.stock.naver.com/");
                         conn.setConnectTimeout(8000);
                         conn.setReadTimeout(8000);
                         conn.setInstanceFollowRedirects(true);
