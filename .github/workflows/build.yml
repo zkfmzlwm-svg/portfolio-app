@@ -1,4 +1,4 @@
-name: Build Portfolio APK
+yamlname: Build Portfolio APK
 on:
   push:
     branches: [ main ]
@@ -6,6 +6,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -15,8 +17,12 @@ jobs:
           distribution: 'temurin'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
       - name: Build APK
-        run: chmod +x gradlew && ./gradlew assembleRelease
+        run: gradle assembleRelease --no-daemon
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
