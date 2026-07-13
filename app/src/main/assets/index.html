@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v3.6</title>
+<title>포트폴리오 v4.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -111,47 +111,47 @@ const INIT={
       {id:'c6',name:'USDT',upbit:'KRW-USDT',qty:10.5,avg:1486,cur:1502},
     ],
     watchlist:[
-      // 대형주 (시총 상위 우량주)
-      {id:'w1',name:'삼성전자',code:'005930',cur:329000,tags:['수출주','대형주'],eps:46900,indPer:15},
-      {id:'w2',name:'SK하이닉스',code:'000660',cur:233300,tags:['수출주','대형주'],eps:290000,indPer:15},
-      {id:'w3',name:'LG에너지솔루션',code:'373220',cur:380000,tags:['수출주','대형주'],eps:8500,indPer:30},
-      // 소형주 (중소형 성장)
-      {id:'w4',name:'HPSP',code:'403870',cur:54700,tags:['수출주','소형주'],eps:2104,indPer:32},
-      {id:'w5',name:'리노공업',code:'058470',cur:175000,tags:['수출주','소형주'],eps:6800,indPer:25},
-      {id:'w6',name:'파크시스템스',code:'140860',cur:215000,tags:['수출주','소형주'],eps:5400,indPer:35},
-      // 가치주 (저PER·고배당)
-      {id:'w7',name:'KB금융',code:'105560',cur:95000,tags:['내수주','가치주','대형주'],eps:16500,indPer:7},
-      {id:'w8',name:'기아',code:'000270',cur:105000,tags:['수출주','가치주','대형주'],eps:21000,indPer:5},
-      {id:'w9',name:'HD현대중공업',code:'329180',cur:380000,tags:['수출주','가치주','대형주'],eps:12000,indPer:18},
-      // 성장주 (고PER·미래성장)
-      {id:'w10',name:'에코프로비엠',code:'247540',cur:135000,tags:['수출주','성장주'],eps:1500,indPer:40},
-      {id:'w11',name:'알테오젠',code:'196170',cur:380000,tags:['성장주','소형주'],eps:3200,indPer:60},
-      {id:'w12',name:'펄어비스',code:'263750',cur:42000,tags:['내수주','성장주','소형주'],eps:800,indPer:45},
-      // 내수주 (국내 소비·서비스)
-      {id:'w13',name:'KT&G',code:'033780',cur:128000,tags:['내수주','가치주','대형주'],eps:9500,indPer:13},
-      {id:'w14',name:'CJ제일제당',code:'097950',cur:280000,tags:['내수주','가치주'],eps:24000,indPer:11},
-      {id:'w15',name:'하이트진로',code:'000080',cur:22000,tags:['내수주','가치주','소형주'],eps:1300,indPer:16},
-      // 수출주 (글로벌 매출 중심)
-      {id:'w16',name:'현대차',code:'005380',cur:245000,tags:['수출주','가치주','대형주'],eps:42000,indPer:6},
-      {id:'w17',name:'POSCO홀딩스',code:'005490',cur:380000,tags:['수출주','가치주','대형주'],eps:18000,indPer:20},
-      {id:'w18',name:'한화에어로스페이스',code:'012450',cur:780000,tags:['수출주','성장주','대형주'],eps:22000,indPer:35},
+      // 대형주
+      {id:'w1',name:'삼성전자',code:'005930',cur:329000,tags:['수출주','대형주'],eps:46900,indPer:15,targetPrice:500000},
+      {id:'w2',name:'SK하이닉스',code:'000660',cur:233300,tags:['수출주','대형주'],eps:290000,indPer:15,targetPrice:340000},
+      {id:'w3',name:'LG에너지솔루션',code:'373220',cur:380000,tags:['수출주','대형주'],eps:8500,indPer:30,targetPrice:520000},
+      // 소형주
+      {id:'w4',name:'HPSP',code:'403870',cur:66300,tags:['수출주','소형주'],eps:2104,indPer:32,targetPrice:90000},
+      {id:'w5',name:'리노공업',code:'058470',cur:175000,tags:['수출주','소형주'],eps:6800,indPer:25,targetPrice:230000},
+      {id:'w6',name:'파크시스템스',code:'140860',cur:215000,tags:['수출주','소형주'],eps:5400,indPer:35,targetPrice:280000},
+      // 가치주
+      {id:'w7',name:'KB금융',code:'105560',cur:95000,tags:['내수주','가치주','대형주'],eps:16500,indPer:7,targetPrice:120000},
+      {id:'w8',name:'기아',code:'000270',cur:105000,tags:['수출주','가치주','대형주'],eps:21000,indPer:5,targetPrice:140000},
+      {id:'w9',name:'HD현대중공업',code:'329180',cur:380000,tags:['수출주','가치주','대형주'],eps:12000,indPer:18,targetPrice:550000},
+      // 성장주
+      {id:'w10',name:'에코프로비엠',code:'247540',cur:170000,tags:['수출주','성장주'],eps:1500,indPer:40,targetPrice:220000},
+      {id:'w11',name:'알테오젠',code:'196170',cur:380000,tags:['성장주','소형주'],eps:3200,indPer:60,targetPrice:550000},
+      {id:'w12',name:'펄어비스',code:'263750',cur:42000,tags:['내수주','성장주','소형주'],eps:800,indPer:45,targetPrice:60000},
+      // 내수주
+      {id:'w13',name:'KT&G',code:'033780',cur:128000,tags:['내수주','가치주','대형주'],eps:9500,indPer:13,targetPrice:160000},
+      {id:'w14',name:'CJ제일제당',code:'097950',cur:280000,tags:['내수주','가치주'],eps:24000,indPer:11,targetPrice:380000},
+      {id:'w15',name:'하이트진로',code:'000080',cur:22000,tags:['내수주','가치주','소형주'],eps:1300,indPer:16,targetPrice:30000},
+      // 수출주
+      {id:'w16',name:'현대차',code:'005380',cur:490000,tags:['수출주','가치주','대형주'],eps:42000,indPer:6,targetPrice:750000},
+      {id:'w17',name:'POSCO홀딩스',code:'005490',cur:380000,tags:['수출주','가치주','대형주'],eps:18000,indPer:20,targetPrice:550000},
+      {id:'w18',name:'한화에어로스페이스',code:'012450',cur:780000,tags:['수출주','성장주','대형주'],eps:22000,indPer:35,targetPrice:1000000},
     ]
   },
   switching:{
     retail:[
-      {ym:'2025-11',val:3.8},{ym:'2025-12',val:3.6},
+      {ym:'2025-11',val:3.8},{ym:'2025-12',val:2.4},
       {ym:'2026-01',val:4.0},{ym:'2026-02',val:3.7},
       {ym:'2026-03',val:3.9},{ym:'2026-04',val:4.9},
-      {ym:'2026-05',val:null}
+      {ym:'2026-05',val:6.9}
     ],
     ism:[
-      {ym:'2025-10',val:56.5},{ym:'2025-11',val:58.2},{ym:'2025-12',val:59.8},
-      {ym:'2026-01',val:62.0},{ym:'2026-02',val:64.5},
-      {ym:'2026-03',val:67.1},{ym:'2026-04',val:70.2},
+      {ym:'2025-10',val:58.0},{ym:'2025-11',val:58.5},{ym:'2025-12',val:58.5},
+      {ym:'2026-01',val:59.0},{ym:'2026-02',val:70.5},
+      {ym:'2026-03',val:78.3},{ym:'2026-04',val:84.6},
       {ym:'2026-05',val:82.1}
     ]
   },
-  ver:'3.6'
+  ver:'4.0'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -160,6 +160,9 @@ const TAG_MAP={
   's1':['성장주','소형주'],          // 에스티팜 (바이오 소형)
   's2':['성장주','소형주'],          // 삼천당제약 (바이오 소형)
   's3':['수출주','가치주','대형주'], // LS ELECTRIC (전력기기 수출 대형)
+  's4':['수출주','대형주'],          // 삼성전자
+  's5':['수출주','대형주'],          // SK하이닉스
+  's6':['수출주','대형주'],          // LG전자
   // 국내 ETF
   'e1':['수출주','성장주'],          // RISE AI전력인프라
   'e2':['내수주','성장주'],          // RISE K엔터
@@ -202,7 +205,7 @@ function autoTagByName(name,isUs){
 const VALID6=new Set(['수출주','내수주','성장주','가치주','대형주','소형주','헤지']);
 
 function updateToV32(p){
-  // 2026-06-12 사진 기준 전체 업데이트
+  // 2026-06-12 사진 기준 (구버전 호환용, v3.7+에서는 updateToV37이 덮어씀)
   const U={
     's1':{qty:70,avg:150272,cur:127500},
     's2':{qty:12.481152,avg:466942,cur:268500},
@@ -234,20 +237,120 @@ function updateToV32(p){
   };
   const all=[...p.holdings.kr_stocks,...p.holdings.kr_etfs,...p.holdings.us,...p.holdings.bonds,...p.holdings.gold,...p.holdings.crypto];
   all.forEach(h=>{if(U[h.id])Object.assign(h,U[h.id]);});
-  // ETH/SOL/USDT 신규 추가
   const newCoins=[
     {id:'c4',name:'ETH',upbit:'KRW-ETH',qty:0.58013773,avg:3179990,cur:2517999},
     {id:'c5',name:'SOL',upbit:'KRW-SOL',qty:5.21631738,avg:255424,cur:100800},
     {id:'c6',name:'USDT',upbit:'KRW-USDT',qty:10.5,avg:1486,cur:1502},
   ];
   newCoins.forEach(nc=>{if(!p.holdings.crypto.find(h=>h.id===nc.id))p.holdings.crypto.push(nc);});
-  p.ver='3.3';p.lastUpdated='2026-06-12';
+  p.lastUpdated='2026-06-12';
+  return p;
+}
+
+function updateToV37(p){
+  // 2026-06-24 사진 기준 전체 업데이트
+  const U={
+    // 국내주식 (정수+소수 합산)
+    's1':{qty:70,avg:150247,cur:115500},              // 에스티팜
+    's2':{qty:12.683009,avg:463349,cur:221500},        // 삼천당제약
+    's3':{qty:1.733053,avg:275826,cur:221000},         // LS ELECTRIC
+    // 국내ETF
+    'e1':{qty:16,avg:24625,cur:19935},                 // RISE AI전력인프라
+    'e2':{qty:18,avg:8214,cur:7970},                   // RISE K엔터&여행레저
+    'e3':{qty:98,avg:28852,cur:25280},                 // TIGER 조선TOP10
+    'e4':{qty:15,avg:29090,cur:26835},                 // KODEX AI반도체핵심장비
+    'e5':{qty:28,avg:7380,cur:5260},                   // KODEX 2차전지핵심소재
+    'e6':{qty:22,avg:8269,cur:8325},                   // TIGER 미국AI전력SMR
+    'e7':{qty:0,avg:0,cur:0},                          // KODEX 인버스 (매도 완료)
+    // 해외주식 (정수+소수 합산)
+    'u1':{qty:48.817331,avg:10.132,cur:9.58},          // JOBY
+    'u2':{qty:1.295623,avg:204.84,cur:228.91},         // CAH
+    'u3':{qty:0.860997,avg:297.3371,cur:281.10},       // COR
+    'u4':{qty:0.307682,avg:822.441,cur:763.91},        // MCK
+    'ue1':{qty:1.233856,avg:688.87,cur:735.50},        // SPY
+    'ue2':{qty:0.687759,avg:667.7174,cur:678.00},      // VOO
+    'ue3':{qty:6.062847,avg:59.463,cur:60.22},         // JEPQ
+    // 채권 (USD→KRW 환산, 환율 1529)
+    'b1':{qty:4.375736,avgKRW:111626,curKRW:111816},   // BND
+    'b2':{qty:5.980696,avgKRW:125268,curKRW:125332},   // SHY
+    'b3':{qty:5.753999,avgKRW:130069,curKRW:131708},   // TLT
+    // 금/광물
+    'g1':{qty:309,avg:14009,cur:13220},                // KRX금현물
+    'g2':{qty:41,avg:10698,cur:8835},                  // 1Q 은액티브
+    'g3':{qty:31,avg:20631,cur:17300},                 // TIGER 금은선물(H)
+    'g4':{qty:14,avg:16251,cur:16760},                 // TIGER 구리실물
+    // 코인
+    'c1':{qty:0.06835547,avg:126823960,cur:94796000},  // BTC
+    'c2':{qty:3367.28802912,avg:2237,cur:108},         // MANA
+    'c3':{qty:1920.04308780,avg:490.3,cur:40.2},       // BORA
+  };
+  const all=[...p.holdings.kr_stocks,...p.holdings.kr_etfs,...p.holdings.us,...p.holdings.bonds,...p.holdings.gold,...p.holdings.crypto];
+  all.forEach(h=>{if(U[h.id])Object.assign(h,U[h.id]);});
+  // 신규 국내주식 추가 (삼성전자, SK하이닉스, LG전자)
+  const newKr=[
+    {id:'s4',name:'삼성전자',code:'005930',qty:1.337252,avg:357625,cur:329900,tags:['수출주','대형주']},
+    {id:'s5',name:'SK하이닉스',code:'000660',qty:0.003601,avg:2776451,cur:2626000,tags:['수출주','대형주']},
+    {id:'s6',name:'LG전자',code:'066570',qty:2,avg:203955,cur:200500,tags:['수출주','대형주']},
+  ];
+  newKr.forEach(ns=>{if(!p.holdings.kr_stocks.find(h=>h.id===ns.id))p.holdings.kr_stocks.push(ns);else Object.assign(p.holdings.kr_stocks.find(h=>h.id===ns.id),ns);});
+  // KODEX 인버스 qty=0이면 제거
+  p.holdings.kr_etfs=p.holdings.kr_etfs.filter(h=>h.qty>0);
+  // 스위칭 지표 실제값 보정 (ISM Prices Paid + 소매판매 YoY)
+  p.switching=JSON.parse(JSON.stringify(INIT.switching));
+  p.lastUpdated='2026-06-24';
+  return p;
+}
+
+function updateToV39(p){
+  // 2026-06-29 사진 기준 전체 업데이트
+  const U={
+    's1':{qty:70,avg:150292,cur:136800},
+    's2':{qty:12.816182,avg:461530,cur:237000},
+    's3':{qty:1.733053,avg:275828,cur:222500},
+    's4':{qty:3.337252,avg:356266,cur:320000},
+    's5':{qty:0.003601,avg:2776451,cur:2561000},
+    's6':{qty:2,avg:203936,cur:191400},
+    'e1':{qty:16,avg:24625,cur:19955},
+    'e2':{qty:17,avg:8213,cur:8150},
+    'e3':{qty:99,avg:28818,cur:24860},
+    'e4':{qty:16,avg:28965,cur:26250},
+    'e5':{qty:29,avg:7310,cur:5520},
+    'e6':{qty:23,avg:8272,cur:7845},
+    'u1':{qty:49.009567,avg:10.128,cur:8.83},
+    'u2':{qty:1.303016,avg:205.034,cur:237.96},
+    'u3':{qty:0.867032,avg:297.2834,cur:286.13},
+    'u4':{qty:0.309931,avg:822.1096,cur:767.83},
+    'ue1':{qty:1.263052,avg:690.11,cur:735.30},
+    'ue2':{qty:0.719463,avg:668.1558,cur:675.82},
+    'ue3':{qty:6.391515,avg:59.485,cur:59.85},
+    'b1':{qty:4.862043,avgKRW:111723,curKRW:112626},
+    'b2':{qty:6.416715,avgKRW:125288,curKRW:125653},
+    'b3':{qty:5.958677,avgKRW:130193,curKRW:133474},
+    'g1':{qty:310,avg:14007,cur:13215},
+    'g2':{qty:42,avg:10654,cur:8520},
+    'g3':{qty:31,avg:20631,cur:17100},
+    'g4':{qty:15,avg:16285,cur:16735},
+    'c1':{qty:0.06835547,avg:126823960,cur:94796000},
+    'c2':{qty:3367.28802912,avg:2237,cur:108},
+    'c3':{qty:1920.04308780,avg:490.3,cur:40.2},
+  };
+  const all=[...p.holdings.kr_stocks,...p.holdings.kr_etfs,...p.holdings.us,...p.holdings.bonds,...p.holdings.gold,...p.holdings.crypto];
+  all.forEach(h=>{if(U[h.id])Object.assign(h,U[h.id]);});
+  // s4~s6 없으면 추가
+  const newKr=[
+    {id:'s4',name:'삼성전자',code:'005930',qty:3.337252,avg:356266,cur:320000,tags:['수출주','대형주']},
+    {id:'s5',name:'SK하이닉스',code:'000660',qty:0.003601,avg:2776451,cur:2561000,tags:['수출주','대형주']},
+    {id:'s6',name:'LG전자',code:'066570',qty:2,avg:203936,cur:191400,tags:['수출주','대형주']},
+  ];
+  newKr.forEach(ns=>{if(!p.holdings.kr_stocks.find(h=>h.id===ns.id))p.holdings.kr_stocks.push(ns);});
+  p.holdings.kr_etfs=p.holdings.kr_etfs.filter(h=>h.qty>0);
+  p.lastUpdated='2026-06-29';
   return p;
 }
 
 function migratePortfolio(p){
   // v3.6 미만: 워치리스트를 6분류 대표종목으로 강제 교체
-  if(!p.ver||p.ver<'3.6'){
+  if(!p.ver||p.ver<'4.0'){
     p.holdings.watchlist=JSON.parse(JSON.stringify(INIT.holdings.watchlist));
   }
   const lists=[p.holdings.kr_stocks,p.holdings.kr_etfs,p.holdings.us,p.holdings.bonds,p.holdings.watchlist||[]];
@@ -261,9 +364,13 @@ function migratePortfolio(p){
       h.tags=autoTagByName(h.name,!!(h.ticker&&!h.code));
     }
   }));
-  // v3.2 미만: 사진 데이터(수량/단가) 강제 업데이트
+  // v3.2 미만: 구 사진 데이터 업데이트
   if(!p.ver||p.ver<'3.2')updateToV32(p);
-  p.ver='3.6';
+  // v3.8 미만: 2026-06-24 사진 데이터
+  if(!p.ver||p.ver<'3.8')updateToV37(p);
+  // v3.9: 2026-06-29 사진 데이터
+  if(!p.ver||p.ver<'4.0')updateToV39(p);
+  p.ver='4.0';
   return p;
 }
 
@@ -507,22 +614,30 @@ let selectedStockInfo={},selectStockSeq=0;
 
 async function selectStock(idx){
   const r=searchResults[idx];if(!r)return;
-  const seq=++selectStockSeq; // race condition 방지용 시퀀스
-  document.getElementById('selCode').textContent=(r.code||r.ticker||'')+(r.market||r.exchange?(' · '+(r.market||r.exchange)):'');
-  document.getElementById('addForm').style.display='block';
-  document.getElementById('addForm').setAttribute('data-idx',idx);
-  document.getElementById('selName').textContent=r.name+' (조회중...)';
+  const seq=++selectStockSeq;
+  // 동기 DOM 접근 (모달 열려있는 시점)
+  const nameEl=document.getElementById('selName');
+  const codeEl=document.getElementById('selCode');
+  const formEl=document.getElementById('addForm');
+  if(!nameEl||!codeEl||!formEl)return;
+  codeEl.textContent=(r.code||r.ticker||'')+(r.market||r.exchange?(' · '+(r.market||r.exchange)):'');
+  formEl.style.display='block';
+  formEl.setAttribute('data-idx',idx);
+  nameEl.textContent=r.name+' (조회중...)';
   const info=await fetchStockInfo(r.code,r.ticker,r.type);
-  // 더 최근 선택이 있으면 이 결과 무시 (오래된 응답 폐기)
+  // 비동기 완료 후 — 모달 닫혔거나 다른 종목 선택됐으면 폐기
   if(seq!==selectStockSeq)return;
-  selectedStockInfo=info;
-  document.getElementById('selName').textContent=r.name;
+  const nameEl2=document.getElementById('selName');
   const avgEl=document.getElementById('addAvg');
+  const tagEl=document.getElementById('autoTags');
+  const formEl2=document.getElementById('addForm');
+  if(!nameEl2)return; // 모달 닫힘
+  selectedStockInfo=info;
+  nameEl2.textContent=r.name;
   if(info.price&&avgEl&&!avgEl.value)avgEl.value=info.price;
   const tags=classifyTags(r.name,info.sector,info.per,info.marketCap,r.type);
-  const tagEl=document.getElementById('autoTags');
   if(tagEl)tagEl.innerHTML='<span style="font-size:11px;color:'+T.text3+'">자동 분류: </span>'+renderTags(tags);
-  document.getElementById('addForm').setAttribute('data-tags',JSON.stringify(tags));
+  if(formEl2)formEl2.setAttribute('data-tags',JSON.stringify(tags));
 }
 
 // ── 화면: 홈 ──
@@ -566,6 +681,7 @@ function holdingsScreen(){
       ${cats.map(c=>`<button onclick="catH='${c.id}';render()" class="tap" style="flex:1;padding:7px 4px;border-radius:10px;background:${catH===c.id?T.teal:T.bg3};color:${catH===c.id?'#000':T.text2};font-size:12px;font-weight:${catH===c.id?700:400}">${c.l}</button>`).join('')}
     </div>
     <div class="scr" id="holdingsScroll" style="flex:1;padding:8px 16px 100px">
+      ${isWatch?`<div style="font-size:11px;color:${T.text3};padding:4px 0 10px">진입가 = 증권사 목표주가 컨센서스 × 75% (25% 할인)</div>`:''}
       ${items.map(h=>{
         const curP=isBond?h.curKRW:h.cur,avgP=isBond?h.avgKRW:h.avg;
         const ev=isFgn?h.qty*h.cur*EX:isWatch?null:h.qty*curP;
@@ -573,14 +689,20 @@ function holdingsScreen(){
         const pnl2=ev!=null?ev-cost2:null,pnlP=cost2>0?pnl2/cost2*100:null;
         const judge=h.eps&&h.indPer?perJudge(h.cur,h.eps,h.indPer):null;
         const isCrypto=!!h.upbit;
-        return `<div style="background:${T.card};border-radius:14px;padding:14px 16px;border:1px solid ${T.border};margin-bottom:8px">
+        // 워치리스트 진입시점 계산
+        const entryPrice=h.targetPrice?Math.round(h.targetPrice*0.75):null;
+        const entryGap=entryPrice?((h.cur-entryPrice)/entryPrice*100):null;
+        const entryStatus=entryPrice?(h.cur<=entryPrice?'🟢 진입구간':entryGap<=10?'🟡 근접':'⚪ 대기'):null;
+        const entryColor=entryPrice?(h.cur<=entryPrice?T.green:entryGap<=10?T.amber:T.text3):T.text3;
+        return `<div style="background:${T.card};border-radius:14px;padding:14px 16px;border:1px solid ${isWatch&&h.cur<=entryPrice?T.green:T.border};margin-bottom:8px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
             <div style="flex:1;min-width:0">
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
                 <span style="font-size:15px;font-weight:700;color:${T.text}">${h.name}</span>
                 ${(!isAlt)?renderTags(h.tags||[]):''}
               </div>
-              ${!isWatch?`<span class="mono" style="font-size:11px;color:${T.text3}">× ${h.qty<1?h.qty.toFixed(6):h.qty.toFixed(2)}</span>`:''}
+              ${!isWatch?`<span class="mono" style="font-size:11px;color:${T.text3}">× ${h.qty<1?h.qty.toFixed(6):h.qty.toFixed(2)}</span>`:
+              entryStatus?`<span style="font-size:11px;color:${entryColor};font-weight:700">${entryStatus}</span>`:''}
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
               ${ev!=null?`<div style="text-align:right"><div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${won(ev,true)}</div>${pnlP!=null?`<div class="mono" style="font-size:12px;color:${pctC(pnlP)}">${pct(pnlP)}</div>`:''}</div>`:`<div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${h.usd?usd(h.cur):won(h.cur)}</div>`}
@@ -588,6 +710,13 @@ function holdingsScreen(){
               <button onclick="deleteHolding('${catH}','${h.id}')" style="background:${T.red}22;color:${T.red};border:none;border-radius:8px;padding:6px 8px;font-size:12px">✕</button>
             </div>
           </div>
+          ${isWatch&&h.targetPrice?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px">
+            ${[
+              ['현재가',won(h.cur),T.text],
+              ['목표주가',won(h.targetPrice),T.blue],
+              ['진입가(×75%)',entryPrice?won(entryPrice):'—',entryColor],
+            ].map(([k,v,c])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 8px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${c};font-weight:700">${v}</div></div>`).join('')}
+          </div>`:''}
           ${!isWatch&&!isCrypto?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
             ${[['현재가',isBond?won(curP):isFgn?usd(h.cur):won(h.cur)],['평균단가',isBond?won(avgP):isFgn?usd(h.avg):won(h.avg)],['평가금액',won(ev)],['손익',(pnl2!=null?(pnl2>=0?'+':'')+won(pnl2,true):'—')]].map(([k,v])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${T.text};font-weight:600">${v}</div></div>`).join('')}
           </div>`:isCrypto?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
@@ -791,7 +920,7 @@ function settingsScreen(){
         </div>
       </div>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v3.6</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -811,6 +940,7 @@ function showEditModal(cat,id){
       ${!isWatch?`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">수량</div><input type="number" id="eQty" value="${h.qty}" step="0.00000001"></div>
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">매수평균가 ${isFgn?'(USD)':isBond?'(KRW)':'(KRW)'}</div><input type="number" id="eAvg" value="${isBond?h.avgKRW:h.avg}"></div>`:''}
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">현재가 ${isFgn?'(USD)':isBond?'(KRW)':'(KRW)'}</div><input type="number" id="eCur" value="${isBond?h.curKRW:h.cur}"></div>
+      ${isWatch?`<div><div style="font-size:12px;color:${T.teal};margin-bottom:5px">📊 증권사 목표주가 컨센서스 (KRW)</div><input type="number" id="eTargetPrice" value="${h.targetPrice||''}" placeholder="예: 530000"><div style="font-size:10px;color:${T.text3};margin-top:3px">진입가 = 이 값 × 75%</div></div>`:''}
       ${!isWatch&&!isBond?`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">EPS (선택)</div><input type="number" id="eEps" value="${h.eps||''}"></div>
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">업종 기준 PER (선택)</div><input type="number" id="eIndPer" value="${h.indPer||''}"></div>`:''}
     </div>
@@ -819,18 +949,21 @@ function showEditModal(cat,id){
 }
 
 function saveEdit(cat,id){
-  let h=null,list=null;
-  if(cat==='kr'){list=[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs];h=list.find(x=>x.id===id);}
-  else if(cat==='us'){list=portfolio.holdings.us;h=list.find(x=>x.id===id);}
-  else if(cat==='bonds'){list=portfolio.holdings.bonds;h=list.find(x=>x.id===id);}
-  else if(cat==='alts'){list=[...portfolio.holdings.gold,...portfolio.holdings.crypto];h=list.find(x=>x.id===id);}
-  else if(cat==='watch'){list=portfolio.holdings.watchlist;h=list.find(x=>x.id===id);}
+  let h=null;
+  if(cat==='kr'){const l=[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs];h=l.find(x=>x.id===id);}
+  else if(cat==='us'){h=portfolio.holdings.us.find(x=>x.id===id);}
+  else if(cat==='bonds'){h=portfolio.holdings.bonds.find(x=>x.id===id);}
+  else if(cat==='alts'){h=[...portfolio.holdings.gold,...portfolio.holdings.crypto].find(x=>x.id===id);}
+  else if(cat==='watch'){h=portfolio.holdings.watchlist.find(x=>x.id===id);}
   if(!h)return;
   const isBond=cat==='bonds',isWatch=cat==='watch';
-  const qty=document.getElementById('eQty'),avg=document.getElementById('eAvg'),cur=document.getElementById('eCur'),eps=document.getElementById('eEps'),indPer=document.getElementById('eIndPer');
+  const qty=document.getElementById('eQty'),avg=document.getElementById('eAvg'),cur=document.getElementById('eCur');
+  const eps=document.getElementById('eEps'),indPer=document.getElementById('eIndPer');
+  const eTargetPrice=document.getElementById('eTargetPrice');
   if(qty)h.qty=parseFloat(qty.value)||h.qty;
   if(avg){if(isBond)h.avgKRW=parseFloat(avg.value)||h.avgKRW;else h.avg=parseFloat(avg.value)||h.avg;}
   if(cur){if(isBond)h.curKRW=parseFloat(cur.value)||h.curKRW;else h.cur=parseFloat(cur.value)||h.cur;}
+  if(eTargetPrice&&eTargetPrice.value){const tp=parseFloat(eTargetPrice.value);if(!isNaN(tp)&&tp>0)h.targetPrice=tp;}
   if(eps&&eps.value)h.eps=parseFloat(eps.value);
   if(indPer&&indPer.value)h.indPer=parseFloat(indPer.value);
   Store.set('porto',JSON.stringify(portfolio));closeModal();render();
@@ -919,12 +1052,13 @@ function _doDelete(cat,id){
 let switchSaveTimer;
 function updateSwitch(key,ym,val){
   const idx=portfolio.switching[key].findIndex(d=>d.ym===ym);
-  if(idx>=0)portfolio.switching[key][idx].val=val===''?null:parseFloat(val);
-  // 저장은 즉시, render는 500ms 디바운스 (입력 중 포커스 소실 방지)
+  if(idx>=0){
+    const parsed=parseFloat(val);
+    portfolio.switching[key][idx].val=(val===''||isNaN(parsed))?null:parsed;
+  }
   Store.set('porto',JSON.stringify(portfolio));
   clearTimeout(switchSaveTimer);
   switchSaveTimer=setTimeout(()=>{
-    // 신호 표시만 부분 업데이트
     const sig=overallSignal();
     const el=document.getElementById('switchSignalBox');
     if(el)el.innerHTML=renderSignalBox(sig);
@@ -944,7 +1078,22 @@ function removeSwitchMonth(key){if(portfolio.switching[key].length>4)portfolio.s
 async function fetchUpbit(){try{const codes=portfolio.holdings.crypto.map(h=>h.upbit).join(',');const arr=await nativeGet('https://api.upbit.com/v1/ticker?markets='+codes);const m={};arr.forEach(d=>{m[d.market]=d.trade_price;});portfolio.holdings.crypto=portfolio.holdings.crypto.map(h=>({...h,cur:m[h.upbit]??h.cur}));Store.set('porto',JSON.stringify(portfolio));alert('✅ 업비트 업데이트 완료');render();}catch(e){alert('실패: '+e.message);}}
 function saveEx(){const v=+document.getElementById('exIn').value;if(v>0){portfolio.exRate=v;Store.set('porto',JSON.stringify(portfolio));render();}}
 function saveApiKey(){portfolio.apiKey=document.getElementById('apiKeyIn').value.trim();Store.set('porto',JSON.stringify(portfolio));alert('저장됨');}
-function resetPortfolio(){if(confirm('초기화하시겠습니까?')){portfolio=JSON.parse(JSON.stringify(INIT));Store.set('porto',JSON.stringify(portfolio));render();}}
+function resetPortfolio(){
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:8px">⚠ 포트폴리오 초기화</div>
+    <div style="font-size:14px;color:${T.text2};margin-bottom:20px">모든 데이터가 초기값으로 되돌아갑니다.<br>이 작업은 되돌릴 수 없습니다.</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="_doReset()" class="tap"
+        style="flex:1;padding:13px;background:${T.red};color:#fff;border-radius:12px;font-size:14px;font-weight:700">초기화</button>
+      <button onclick="closeModal()" class="tap"
+        style="flex:1;padding:13px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
+    </div>`);
+}
+function _doReset(){
+  portfolio=JSON.parse(JSON.stringify(INIT));
+  Store.set('porto',JSON.stringify(portfolio));
+  closeModal();render();
+}
 
 async function handleTextImport(text){
   if(!text||!text.trim()){alert('텍스트를 붙여넣어주세요.');return;}
