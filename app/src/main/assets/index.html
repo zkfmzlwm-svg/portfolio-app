@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v4.2</title>
+<title>포트폴리오 v4.3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -53,14 +52,48 @@ if(window.HttpBridge){
   window.HttpBridge._fail=id=>{window.HttpBridge._cb[id]&&(window.HttpBridge._cb[id](null),delete window.HttpBridge._cb[id]);};
 }
 
+// HttpBridge 콜백 저장소 (MainActivity _deliver/_fail 프로토콜)
+window._httpCallbacks={};
+window.HttpBridge=window.HttpBridge||{};
+window.HttpBridge._deliver=function(id){
+  const cb=window._httpCallbacks[id];
+  if(cb){
+    // MainActivity.fetch(id)로 결과 문자열 가져오기
+    const data=window.HttpBridge.fetch?window.HttpBridge.fetch(id):null;
+    delete window._httpCallbacks[id];
+    cb.resolve(data);
+  }
+};
+window.HttpBridge._fail=function(id){
+  const cb=window._httpCallbacks[id];
+  if(cb){delete window._httpCallbacks[id];cb.reject(new Error('http fail'));}
+};
+
 async function nativeGet(url){
-  if(window.HttpBridge){
-    return new Promise((res,rej)=>{
+  // Android WebView: HttpBridge.get(url,callbackId) → _deliver/_fail 콜백
+  if(window.HttpBridge&&window.HttpBridge.get){
+    return new Promise((resolve,reject)=>{
       const id='r'+Date.now()+Math.random().toString(36).slice(2,6);
-      window.HttpBridge._cb[id]=d=>d?res(JSON.parse(d)):rej(new Error('fetch fail'));
-      window.HttpBridge.get(url,id);
+      window._httpCallbacks[id]={
+        resolve:(data)=>{
+          if(!data){reject(new Error('empty'));return;}
+          try{resolve(JSON.parse(data));}
+          catch(e){reject(new Error('parse fail'));}
+        },
+        reject
+      };
+      // 타임아웃 (10초)
+      setTimeout(()=>{
+        if(window._httpCallbacks[id]){
+          delete window._httpCallbacks[id];
+          reject(new Error('timeout'));
+        }
+      },10000);
+      try{window.HttpBridge.get(url,id);}
+      catch(e){delete window._httpCallbacks[id];reject(e);}
     });
   }
+  // 브라우저 환경 (테스트용)
   return fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}}).then(r=>r.json());
 }
 
@@ -152,7 +185,7 @@ const INIT={
       {ym:'2026-05',val:82.1},{ym:'2026-06',val:73.0}
     ]
   },
-  ver:'4.2'
+  ver:'4.3'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -453,7 +486,7 @@ function migratePortfolio(p){
   if(vn<4.0)updateToV39(p);
   if(vn<4.1)updateToV41(p);
   if(vn<4.2)updateToV42(p);
-  p.ver='4.2';
+  p.ver='4.3';
   return p;
 }
 
@@ -604,27 +637,42 @@ async function updateAllPrices(){
 // ── 종목 검색 (v3.5: 네이버 통합검색 front-api + 야후 백업) ──
 let searchResults=[],searchTimer;
 
-// 네이버 통합 종목검색 (국내+해외, 종목명·코드·티커 모두)
+// 네이버 통합 종목검색 (여러 엔드포인트 폴백)
 async function searchNaver(q){
-  try{
-    const url='https://m.stock.naver.com/front-api/search/autoComplete?query='+encodeURIComponent(q)+'&target=stock,index,etf';
-    const d=await nativeGet(url);
-    const items=(d&&d.result&&d.result.items)||(d&&d.items)||[];
-    return items.map(it=>{
-      const code=it.code||it.symbolCode||'';
-      const nation=it.nationCode||it.nationType||'';
-      const typeName=it.typeName||it.stockExchangeName||it.categoryName||'';
-      // 국내 판정: 6자리 숫자 코드 or 국내 거래소
-      const isKr=(/^\d{6}$/.test(code))||nation==='KOR'||/KOSPI|KOSDAQ|KONEX|코스피|코스닥/.test(typeName);
-      return{
-        code:code,
-        ticker:isKr?null:(it.reutersCode||it.symbolCode||code),
-        name:it.name||it.korName||it.stockName||'',
-        market:typeName||(isKr?'KRX':'US'),
-        type:isKr?'kr':'us'
-      };
-    }).filter(x=>x.name&&x.code);
-  }catch(e){return[];}
+  // 엔드포인트 1: front-api autoComplete
+  const endpoints=[
+    'https://m.stock.naver.com/front-api/search/autoComplete?query='+encodeURIComponent(q)+'&target=stock,index,etf',
+    'https://ac.stock.naver.com/ac?q='+encodeURIComponent(q)+'&target=stock,index,etf&where=stock',
+  ];
+  for(const url of endpoints){
+    try{
+      const d=await nativeGet(url);
+      // 다양한 응답 구조 대응
+      let items=[];
+      if(d&&d.result&&d.result.items)items=d.result.items;
+      else if(d&&d.items)items=d.items;
+      else if(d&&Array.isArray(d.result))items=d.result;
+      else if(Array.isArray(d))items=d;
+      else if(d&&d.result&&Array.isArray(d.result))items=d.result;
+      if(!items.length)continue;
+      const mapped=items.map(it=>{
+        const code=it.code||it.symbolCode||it.cd||'';
+        const nation=it.nationCode||it.nationType||it.nation||'';
+        const typeName=it.typeName||it.stockExchangeName||it.categoryName||it.nm||'';
+        const nm=it.name||it.korName||it.stockName||it.nm||'';
+        const isKr=(/^\d{6}$/.test(code))||nation==='KOR'||/KOSPI|KOSDAQ|KONEX|코스피|코스닥/.test(typeName);
+        return{
+          code:code,
+          ticker:isKr?null:(it.reutersCode||it.symbolCode||code),
+          name:nm,
+          market:typeName||(isKr?'KRX':'US'),
+          type:isKr?'kr':'us'
+        };
+      }).filter(x=>x.name&&x.code);
+      if(mapped.length)return mapped;
+    }catch(e){continue;}
+  }
+  return [];
 }
 
 // 야후 검색 (해외 백업)
@@ -764,7 +812,10 @@ function holdingsScreen(){
       ${cats.map(c=>`<button onclick="catH='${c.id}';render()" class="tap" style="flex:1;padding:7px 4px;border-radius:10px;background:${catH===c.id?T.teal:T.bg3};color:${catH===c.id?'#000':T.text2};font-size:12px;font-weight:${catH===c.id?700:400}">${c.l}</button>`).join('')}
     </div>
     <div class="scr" id="holdingsScroll" style="flex:1;padding:8px 16px 100px">
-      ${isWatch?`<div style="font-size:11px;color:${T.text3};padding:4px 0 10px">진입가 = 증권사 목표주가 컨센서스 × 75% (25% 할인)</div>`:''}
+      ${isWatch?`<div style="font-size:11px;color:${T.text3};padding:4px 0 8px">진입가 = 증권사 목표주가 컨센서스 × 75% (25% 할인)</div>
+        <button onclick="updateWatchlistWithClaude()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700;margin-bottom:12px">
+          🤖 Claude로 워치리스트 목표주가 업데이트
+        </button>`:''}
       ${items.map(h=>{
         const curP=isBond?h.curKRW:h.cur,avgP=isBond?h.avgKRW:h.avg;
         const ev=isFgn?h.qty*h.cur*EX:isWatch?null:h.qty*curP;
@@ -800,6 +851,9 @@ function holdingsScreen(){
               ['진입가(×75%)',entryPrice?won(entryPrice):'—',entryColor],
             ].map(([k,v,c])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 8px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${c};font-weight:700">${v}</div></div>`).join('')}
           </div>`:''}
+          ${isWatch?`<button onclick="transferToHolding('${h.id}')" class="tap" style="width:100%;padding:10px;background:${T.teal}22;color:${T.teal};border:1px solid ${T.teal}44;border-radius:10px;font-size:13px;font-weight:700;margin-top:4px">
+            ⬇ 내 종목으로 이전 (매수 반영)
+          </button>`:''}
           ${!isWatch&&!isCrypto?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
             ${[['현재가',isBond?won(curP):isFgn?usd(h.cur):won(h.cur)],['평균단가',isBond?won(avgP):isFgn?usd(h.avg):won(h.avg)],['평가금액',won(ev)],['손익',(pnl2!=null?(pnl2>=0?'+':'')+won(pnl2,true):'—')]].map(([k,v])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${T.text};font-weight:600">${v}</div></div>`).join('')}
           </div>`:isCrypto?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
@@ -1003,7 +1057,7 @@ function settingsScreen(){
         </div>
       </div>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.2</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.3</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -1050,6 +1104,112 @@ function saveEdit(cat,id){
   if(eps&&eps.value)h.eps=parseFloat(eps.value);
   if(indPer&&indPer.value)h.indPer=parseFloat(indPer.value);
   Store.set('porto',JSON.stringify(portfolio));closeModal();render();
+}
+
+// ── 워치리스트 → 내 종목 이전 ──
+function transferToHolding(watchId){
+  const w=portfolio.holdings.watchlist.find(x=>x.id===watchId);
+  if(!w)return;
+  const isUs=!!w.usd;
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:6px">⬇ ${w.name} 매수 반영</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:16px">워치리스트에서 실제 보유 종목으로 이전합니다</div>
+    <div style="display:grid;gap:10px;margin-bottom:18px">
+      <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">매수 수량</div>
+        <input type="number" id="tfQty" placeholder="예: 10" step="0.00000001" style="font-size:16px"></div>
+      <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">매수 평균가 ${isUs?'(USD)':'(KRW)'}</div>
+        <input type="number" id="tfAvg" value="${w.cur}" style="font-size:16px"></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="doTransfer('${watchId}')" class="tap" style="flex:1;padding:14px;background:${T.teal};color:#000;border-radius:12px;font-size:15px;font-weight:700">이전</button>
+      <button onclick="closeModal()" class="tap" style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('tfQty')?.focus(),300);
+}
+
+function doTransfer(watchId){
+  const w=portfolio.holdings.watchlist.find(x=>x.id===watchId);
+  if(!w)return;
+  const qty=parseFloat(document.getElementById('tfQty')?.value);
+  const avg=parseFloat(document.getElementById('tfAvg')?.value);
+  if(!qty||qty<=0){alert('매수 수량을 입력하세요.');return;}
+  if(!avg||avg<=0){alert('매수 평균가를 입력하세요.');return;}
+  const isUs=!!w.usd;
+  const id='t'+Date.now();
+  if(isUs){
+    // 기존 보유 있으면 평단 합산
+    const ex=portfolio.holdings.us.find(h=>h.ticker===w.ticker);
+    if(ex){
+      const totQty=ex.qty+qty,totCost=ex.qty*ex.avg+qty*avg;
+      ex.avg=totCost/totQty;ex.qty=totQty;ex.cur=w.cur;
+    }else{
+      portfolio.holdings.us.push({id,name:w.name,ticker:w.ticker,qty,avg,cur:w.cur,tags:w.tags||['성장주'],eps:w.eps||null});
+    }
+  }else{
+    const ex=[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs].find(h=>h.code===w.code);
+    if(ex){
+      const totQty=ex.qty+qty,totCost=ex.qty*ex.avg+qty*avg;
+      ex.avg=totCost/totQty;ex.qty=totQty;ex.cur=w.cur;
+    }else{
+      portfolio.holdings.kr_stocks.push({id,name:w.name,code:w.code,qty,avg,cur:w.cur,tags:w.tags||['성장주'],eps:w.eps||null,indPer:w.indPer||null});
+    }
+  }
+  Store.set('porto',JSON.stringify(portfolio));
+  closeModal();
+  alert('✅ '+w.name+' '+qty+'주가 내 종목에 반영되었습니다.');
+  catH='kr';render();
+}
+
+// ── Claude 에이전트로 워치리스트 목표주가 업데이트 ──
+async function updateWatchlistWithClaude(){
+  if(!portfolio.apiKey){
+    alert('설정 탭에서 Claude API 키를 먼저 입력해주세요.\n(console.anthropic.com에서 무료 발급)');
+    return;
+  }
+  const names=portfolio.holdings.watchlist.map(w=>w.name).join(', ');
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:12px">🤖 Claude 분석 중...</div>
+    <div class="pulse" style="font-size:13px;color:${T.text2};margin-bottom:16px">최근 3개월 증권사 목표주가 컨센서스를 조회하고 있습니다...</div>
+    <div style="font-size:11px;color:${T.text3};background:${T.bg2};border-radius:10px;padding:12px;line-height:1.6">${names}</div>`);
+  try{
+    const stockList=portfolio.holdings.watchlist.map(w=>({id:w.id,name:w.name,code:w.code||w.ticker,current:w.targetPrice||0}));
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':portfolio.apiKey,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1500,
+        tools:[{type:'web_search_20250305',name:'web_search'}],
+        messages:[{role:'user',content:`다음 한국 주식들의 최근 3개월 증권사 목표주가 컨센서스(평균)를 웹검색으로 조사해줘. 각 종목의 최신 목표주가를 원(KRW) 단위 숫자로 알려줘.
+
+종목: ${portfolio.holdings.watchlist.map(w=>w.name+'('+(w.code||'')+')').join(', ')}
+
+반드시 아래 JSON 배열 형식으로만 답변해. 설명 없이 JSON만:
+[{"id":"${portfolio.holdings.watchlist[0].id}","name":"종목명","targetPrice":목표주가숫자}]
+
+id는 다음을 사용: ${stockList.map(s=>s.id+'='+s.name).join(', ')}`}]
+      })
+    });
+    const data=await res.json();
+    if(data.error)throw new Error(data.error.message);
+    // 텍스트 블록에서 JSON 추출
+    const textBlocks=data.content.filter(c=>c.type==='text').map(c=>c.text).join('\n');
+    const jsonMatch=textBlocks.match(/\[[\s\S]*\]/);
+    if(!jsonMatch)throw new Error('목표주가 데이터를 찾을 수 없습니다.');
+    const updates=JSON.parse(jsonMatch[0]);
+    let cnt=0;
+    updates.forEach(u=>{
+      const w=portfolio.holdings.watchlist.find(x=>x.id===u.id||x.name===u.name);
+      if(w&&u.targetPrice&&u.targetPrice>0){w.targetPrice=u.targetPrice;cnt++;}
+    });
+    Store.set('porto',JSON.stringify(portfolio));
+    closeModal();
+    alert('✅ '+cnt+'개 종목의 목표주가가 업데이트되었습니다.');
+    render();
+  }catch(e){
+    closeModal();
+    alert('업데이트 실패: '+e.message+'\n\nAPI 키 또는 네트워크를 확인해주세요.');
+  }
 }
 
 // ── 추가 모달 ──
