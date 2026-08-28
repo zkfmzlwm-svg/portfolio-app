@@ -61,3 +61,81 @@ public class MainActivity extends Activity {
                         if (url.contains("naver.com")) {
                             conn.setRequestProperty("Referer", "https://m.stock.naver.com/");
                         }
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
+                        conn.setInstanceFollowRedirects(true);
+
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        br.close();
+
+                        httpResults.put(callbackId, sb.toString());
+                        final String id = callbackId;
+                        webView.post(() -> webView.evaluateJavascript(
+                            "window.HttpBridge&&window.HttpBridge._deliver('" + id + "')", null));
+                    } catch (Exception e) {
+                        final String id = callbackId;
+                        webView.post(() -> webView.evaluateJavascript(
+                            "window.HttpBridge&&window.HttpBridge._fail('" + id + "')", null));
+                    }
+                });
+            }
+
+            @JavascriptInterface
+            public String fetch(String callbackId) {
+                return httpResults.remove(callbackId);
+            }
+        }, "HttpBridge");
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView wv, ValueCallback<Uri[]> cb,
+                                              FileChooserParams params) {
+                fileCallback = cb;
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                startActivityForResult(Intent.createChooser(intent, "사진 선택"), FILE_REQ);
+                return true;
+            }
+        });
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                if (url.startsWith("file://")) {
+                    v.loadUrl(url);
+                    return true;
+                }
+                // http/https → 시스템 브라우저로 열기
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                    return true;
+                }
+                return false;
+            }
+        });        webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        if (req == FILE_REQ) {
+            Uri[] uris = null;
+            if (res == RESULT_OK && data != null) uris = new Uri[]{ data.getData() };
+            if (fileCallback != null) { fileCallback.onReceiveValue(uris); fileCallback = null; }
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView.canGoBack()) webView.goBack(); else super.onBackPressed();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        executor.shutdown();
+    }
+}
