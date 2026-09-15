@@ -1,0 +1,8 @@
+{
+  "name": "portfolio-holdings-ocr",
+  "description": "증권사/코인 거래소 보유종목 캡처 이미지를 이 앱의 '보유 화면 텍스트 붙여넣기' 입력창에 그대로 쓸 수 있는 텍스트로 변환합니다.",
+  "version": "1.0.0",
+  "author": {
+    "name": "zkfmzlwm"
+  }
+}
