@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v4.6</title>
+<title>포트폴리오 v4.7</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -99,7 +99,7 @@ async function nativeGet(url){
 
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
-  exRate:1385,lastUpdated:'2026-08-28',apiKey:'',
+  exRate:1385,lastUpdated:'2026-08-28',
   targets:{kr:25,us:25,bonds:20,gold:20,crypto:10},
   holdings:{
     kr_stocks:[
@@ -185,7 +185,7 @@ const INIT={
       {ym:'2026-05',val:82.1},{ym:'2026-06',val:73.0},{ym:'2026-07',val:71.1}
     ]
   },
-  ver:'4.6'
+  ver:'4.7'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -498,7 +498,7 @@ function migratePortfolio(p){
     p.lastUpdated=INIT.lastUpdated;
     p.switching=JSON.parse(JSON.stringify(INIT.switching));
   }
-  p.ver='4.6';
+  p.ver='4.7';
   return p;
 }
 
@@ -626,10 +626,44 @@ function overallSignal(){
 async function fetchKrPrice(code){try{const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic');const p=parseInt((d.closePrice||'').replace(/,/g,''));return isNaN(p)?null:p;}catch(e){return null;}}
 async function fetchUsPrice(ticker){try{const d=await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/'+ticker+'?interval=1d&range=1d');return d?.chart?.result?.[0]?.meta?.regularMarketPrice||null;}catch(e){return null;}}
 
+// ── 실시간 환율(USD/KRW) ──
+async function fetchExRate(){
+  try{
+    const d=await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/KRW=X?interval=1d&range=1d');
+    const p=d?.chart?.result?.[0]?.meta?.regularMarketPrice;
+    if(p>0)return p;
+  }catch(e){}
+  try{
+    const d=await nativeGet('https://open.er-api.com/v6/latest/USD');
+    const p=d?.rates?.KRW;
+    if(p>0)return p;
+  }catch(e){}
+  try{
+    const d=await nativeGet('https://api.frankfurter.app/latest?from=USD&to=KRW');
+    const p=d?.rates?.KRW;
+    if(p>0)return p;
+  }catch(e){}
+  return null;
+}
+async function fetchExRateManual(){
+  logs=['📡 실시간 환율 조회 중...'];render();
+  const p=await fetchExRate();
+  if(p){
+    portfolio.exRate=Math.round(p*100)/100;
+    Store.set('porto',JSON.stringify(portfolio));
+    logs=['✅ 환율 갱신: 1 USD = '+portfolio.exRate.toLocaleString()+' KRW'];render();
+  }else{
+    logs=['⚠ 환율 조회 실패 (네트워크 확인)'];render();
+  }
+  setTimeout(()=>{logs=[];render();},3000);
+}
+
 async function updateAllPrices(){
   if(loadingPrice)return;
   loadingPrice=true;logs=['📡 가격 업데이트 시작...'];render();
   let n=0;
+  const exP=await fetchExRate();
+  if(exP){portfolio.exRate=Math.round(exP*100)/100;logs=[...logs,'환율 갱신: 1 USD = '+portfolio.exRate.toLocaleString()+' KRW'];render();}
   for(const h of[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs,...portfolio.holdings.gold]){
     if(h.code){logs=[...logs,'조회: '+h.name];render();const p=await fetchKrPrice(h.code);if(p){h.cur=p;n++;}}
   }
@@ -1055,7 +1089,7 @@ function analysisScreen(){
 function settingsScreen(){
   return `<div class="scr fade" style="padding:0 16px 40px;height:100%">
     ${secL('환율 설정')}
-    ${card(`<div style="display:flex;gap:10px"><input id="exIn" type="number" value="${portfolio.exRate}" style="flex:1"><button onclick="saveEx()" class="tap" style="padding:10px 18px;background:${T.teal};color:#000;border-radius:10px;font-weight:700">저장</button></div><div style="font-size:11px;color:${T.text3};margin-top:6px">현재: 1 USD = ${portfolio.exRate.toLocaleString()} KRW</div>`)}
+    ${card(`<div style="display:flex;gap:10px"><input id="exIn" type="number" value="${portfolio.exRate}" style="flex:1"><button onclick="saveEx()" class="tap" style="padding:10px 18px;background:${T.teal};color:#000;border-radius:10px;font-weight:700">저장</button></div><div style="margin-top:8px">${btn('↻  실시간 환율 조회','fetchExRateManual()',T.blue)}</div><div style="font-size:11px;color:${T.text3};margin-top:6px">현재: 1 USD = ${portfolio.exRate.toLocaleString()} KRW</div>`)}
     ${secL('코인 가격 연동')}
     ${card(btn('↻  업비트 실시간 가격 가져오기','fetchUpbit()',T.amber))}
 
@@ -1070,7 +1104,7 @@ function settingsScreen(){
       </div>
       <div style="font-size:10px;color:${T.text3};margin-top:8px;line-height:1.5">💡 각 줄: <b>종목명 수량 현재가 평균가</b> 순서. 기존 보유 종목은 수량·평균가가 갱신되고, 없는 종목은 새로 추가됩니다.</div>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.6</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.7</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated}</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -1260,7 +1294,6 @@ function doTransfer(watchId){
   catH='kr';render();
 }
 
-// ── Claude 에이전트로 워치리스트 목표주가 업데이트 ──
 // ── 추가 모달 ──
 function showAddModal(cat){
   selectedStockInfo={};
@@ -1426,79 +1459,6 @@ function renderSignalBox(sig){
       </div>
     </div>
   </div>`;
-}
-
-function showSwitchUpdateModal(){
-  const now=new Date();
-  // 소매판매는 전전월 데이터가 당월 발표 (예: 6월에 4월치 발표)
-  const retailLag=new Date(now.getFullYear(),now.getMonth()-2,1);
-  const ismLag=new Date(now.getFullYear(),now.getMonth()-1,1);
-  const fmtYM=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  const rYM=fmtYM(retailLag),iYM=fmtYM(ismLag);
-  const rLast=portfolio.switching.retail.filter(d=>d.val!==null).slice(-1)[0];
-  const iLast=portfolio.switching.ism.filter(d=>d.val!==null).slice(-1)[0];
-  showModal(`<div class="sheet-handle"></div>
-    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:4px">📊 지표 업데이트</div>
-    <div style="font-size:12px;color:${T.text3};margin-bottom:18px">최신 발표 데이터를 입력하세요</div>
-    <div style="background:${T.bg2};border-radius:12px;padding:14px;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:700;color:${T.teal};margin-bottom:10px">🛍 미국 소매판매 YoY (%)</div>
-      <div style="font-size:11px;color:${T.text3};margin-bottom:8px">
-        입력 월: <span style="color:${T.text}">${rYM}</span>
-        ${rLast?` · 직전값: <span style="color:${T.amber}">${rLast.val}% (${rLast.ym})</span>`:''}
-      </div>
-      <input type="number" id="retailInput" placeholder="예: 4.9" step="0.1"
-        style="font-size:18px;text-align:center;font-family:monospace">
-    </div>
-    <div style="background:${T.bg2};border-radius:12px;padding:14px;margin-bottom:18px">
-      <div style="font-size:13px;font-weight:700;color:${T.blue};margin-bottom:10px">🏭 ISM 제조업 가격지수 (pt)</div>
-      <div style="font-size:11px;color:${T.text3};margin-bottom:8px">
-        입력 월: <span style="color:${T.text}">${iYM}</span>
-        ${iLast?` · 직전값: <span style="color:${T.amber}">${iLast.val}pt (${iLast.ym})</span>`:''}
-      </div>
-      <input type="number" id="ismInput" placeholder="예: 82.1" step="0.1"
-        style="font-size:18px;text-align:center;font-family:monospace">
-    </div>
-    <div style="display:flex;gap:10px">
-      <button onclick="saveSwitchUpdate('${rYM}','${iYM}')" class="tap"
-        style="flex:1;padding:14px;background:${T.teal};color:#000;border-radius:12px;font-size:15px;font-weight:700">저장</button>
-      <button onclick="closeModal()" class="tap"
-        style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
-    </div>`);
-  setTimeout(()=>document.getElementById('retailInput')?.focus(),300);
-}
-
-function saveSwitchUpdate(rYM,iYM){
-  const rv=document.getElementById('retailInput')?.value;
-  const iv=document.getElementById('ismInput')?.value;
-  let saved=0;
-  if(rv!==''&&rv!=null){
-    const rVal=parseFloat(rv);
-    if(!isNaN(rVal)){
-      const idx=portfolio.switching.retail.findIndex(d=>d.ym===rYM);
-      if(idx>=0)portfolio.switching.retail[idx].val=rVal;
-      else portfolio.switching.retail.push({ym:rYM,val:rVal});
-      portfolio.switching.retail.sort((a,b)=>a.ym.localeCompare(b.ym));
-      saved++;
-    }
-  }
-  if(iv!==''&&iv!=null){
-    const iVal=parseFloat(iv);
-    if(!isNaN(iVal)){
-      const idx=portfolio.switching.ism.findIndex(d=>d.ym===iYM);
-      if(idx>=0)portfolio.switching.ism[idx].val=iVal;
-      else portfolio.switching.ism.push({ym:iYM,val:iVal});
-      portfolio.switching.ism.sort((a,b)=>a.ym.localeCompare(b.ym));
-      saved++;
-    }
-  }
-  if(saved>0){
-    Store.set('porto',JSON.stringify(portfolio));
-    closeModal();
-    tab='switching';
-    render();
-  }else{
-    alert('값을 입력해주세요.');
-  }
 }
 
 // ── 모달 ──

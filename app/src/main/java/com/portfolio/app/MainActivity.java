@@ -51,9 +51,10 @@ public class MainActivity extends Activity {
             @JavascriptInterface
             public void get(String url, String callbackId) {
                 executor.execute(() -> {
+                    HttpURLConnection conn = null;
                     try {
                         URL u = new URL(url);
-                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                        conn = (HttpURLConnection) u.openConnection();
                         conn.setRequestProperty("User-Agent",
                             "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/108.0.0.0");
                         conn.setRequestProperty("Accept", "application/json, text/plain, */*");
@@ -79,6 +80,8 @@ public class MainActivity extends Activity {
                         final String id = callbackId;
                         webView.post(() -> webView.evaluateJavascript(
                             "window.HttpBridge&&window.HttpBridge._fail('" + id + "')", null));
+                    } finally {
+                        if (conn != null) conn.disconnect();
                     }
                 });
             }
@@ -116,7 +119,9 @@ public class MainActivity extends Activity {
                 }
                 return false;
             }
-        });        webView.loadUrl("file:///android_asset/index.html");
+        });
+
+        webView.loadUrl("file:///android_asset/index.html");
     }
 
     @Override
