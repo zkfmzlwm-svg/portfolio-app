@@ -1,52 +1,51 @@
-# 📱 포트폴리오 앱 — APK 빌드 가이드
+# 📱 포트폴리오 앱 (v4.7)
 
-## 🚀 방법 1: GitHub Actions (가장 쉬움 — 5분)
+증권사/코인 앱의 보유·거래 내역을 반영하고, 듀얼 스위칭 신호에 따라 자산 비중을
+어떻게 높이고 낮출지 판단하는 개인 포트폴리오 트래커입니다.
+Android WebView 셸(`MainActivity.java`) + 단일 파일 웹앱(`app/src/main/assets/index.html`) 구조라
+서버 없이 동작하고, 모든 데이터는 기기 내부(SharedPreferences)에만 저장됩니다.
 
-### 1단계: GitHub 리포 생성
-1. https://github.com/new 접속
-2. 리포 이름: `portfolio-app`
-3. Public 선택 → Create repository
+## 🚀 APK 빌드
 
-### 2단계: 이 폴더 업로드
+### GitHub Actions (서버/로컬 환경 불필요)
+1. 이 리포를 GitHub에 push하면 **Build Portfolio APK** 워크플로가 자동 실행됩니다.
+   (수동 실행도 가능: Actions 탭 → Run workflow)
+2. 완료 후 Artifacts에서 `portfolio-apk`를 다운로드 → 압축 해제.
+3. 정식 서명 키스토어 Secrets(`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)가
+   없어도 **디버그 서명 APK**가 함께 산출되므로 바로 설치할 수 있습니다.
+4. 스마트폰에서 `.apk` 실행 → "출처를 알 수 없는 앱" 허용 → 설치.
+
+### 로컬 빌드 (Android Studio 또는 Gradle)
 ```bash
-cd portfolio_apk
-git init
-git add .
-git commit -m "첫 커밋"
-git branch -M main
-git remote add origin https://github.com/YOUR_ID/portfolio-app.git
-git push -u origin main
+./gradlew assembleRelease   # JDK 17 + Android SDK 필요
+# 결과: app/build/outputs/apk/release/app-release.apk
 ```
+`gradle/wrapper/gradle-wrapper.jar`가 없으면 `gradlew`가 시스템 gradle로 자동 폴백합니다.
 
-### 3단계: APK 다운로드
-1. GitHub → Actions 탭 클릭
-2. "Build Portfolio APK" 워크플로우 실행 중 확인
-3. 완료 후 "Artifacts" 섹션에서 `portfolio-apk` 다운로드
-4. 압축 해제 → `.apk` 파일 스마트폰으로 전송
-
-### 스마트폰 설치
-- Android: `.apk` 파일 탭 → "알 수 없는 앱" 허용 → 설치
-- iOS: APK는 Android 전용 (iOS는 PWA 방식 사용)
-
----
-
-## 🖥️ 방법 2: 로컬 직접 빌드 (Android Studio 있을 때)
-
-```bash
-# Android Studio 설치 후:
-./gradlew assembleDebug
-# 결과: app/build/outputs/apk/debug/app-debug.apk
-```
-
----
-
-## 앱 기능
+## 🧭 기능
 
 | 탭 | 내용 |
 |---|---|
-| ◎ 홈 | 총 자산, P&L, 자산별 비중 |
-| ≡ 종목 | 국내/해외/채권/대체투자 카드 |
-| ⊖ 리밸런싱 | 월 투자금 슬라이더 + 배분 가이드 |
-| ↗ 분석 | PER 비교 (저평가/고평가 필터) |
-| ◈ 설정 | 환율 설정 + 업비트 연동 |
+| ◎ 홈 | 총 자산, 미실현 손익, 누적 실현손익, 자산별 비중·목표 괴리 |
+| ≡ 종목 | 국내/해외/채권/대체/워치리스트. 카드별 **＋매수 / －매도 반영**, **📋 거래내역** 원장, 실시간 가격 업데이트(네이버·야후·업비트) |
+| ⇄ 스위칭 | 소매판매 YoY·ISM 가격지수의 MA3 3개월 연속 상승 듀얼 신호, **신호 권장 목표비중(공격/중립/방어) 프리셋**, **주식 스타일 비중 진단**(수출/내수·가치/성장·대형/소형), 최신 지표 입력 모달 |
+| ⊖ 리밸런싱 | 목표비중 직접 편집, **월 적립금을 부족 자산군에 자동 배분**, 부족분 추정 개월 수, **초과분 매도/부족분 매수 즉시 리밸런싱 표** |
+| ↗ 분석 | 보유/워치 종목 PER을 업종 기준 PER과 비교 (저평가/적정/고평가 필터) |
+| ◈ 설정 | 환율, 업비트 연동, **보유 화면 텍스트 붙여넣기(미리보기 반영)**, **JSON 백업/복원**, 초기화 |
 
+### 거래 내역 반영 — 두 가지 방식
+1. **개별 거래**: 종목 카드의 ＋매수/－매도 버튼 → 수량·체결단가 입력 시 평균단가가
+   가중평균으로 자동 계산되고 거래내역 원장에 기록됩니다. 전량 매도는 실현손익을 남기고
+   보유 목록에서 자동 제거됩니다. 워치리스트의 "내 종목으로 이전(매수)"도 동일하게 기록됩니다.
+2. **화면 붙여넣기(스냅샷)**: 증권사·업비트 앱의 보유종목 화면을 복사해 설정에서 붙여넣으면
+   국내/해외/채권/금/코인 전 종목을 인식하고 **적용 전 미리보기**에서 수량·현재가·평균단가를
+   확인·수정할 수 있습니다. 정수/소수 분리 표기, 평가금액·수익률 컬럼 혼재,
+   `1Q 은액티브` 같은 숫자 포함 종목명, 쉼표와 %를 모두 견딥니다.
+   화면에서 사라진 종목은 전량매도(거래내역 기록) 또는 단순 제거를 선택할 수 있습니다.
+
+> ⚠️ 거래내역의 삭제는 기록만 지우며 보유수량은 되돌리지 않습니다. 보유 잔고는 항상
+> 마지막 스냅샷/거래 반영 결과가 기준입니다. 중요 데이터는 설정의 JSON 백업으로 보관하세요.
+
+## ⚙️ 개발 메모
+- 순수 바닐라 JS 단일 파일(빌드 불필요). 로직 수정 후 `index.html`만 교체하면 앱에 반영됩니다.
+- `temp/`에는 개발용 파서/계산 회귀 테스트 스크립트가 있습니다(`node temp/smoke.js`).

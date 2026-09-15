@@ -8,8 +8,8 @@ android {
         applicationId "com.portfolio.app"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 7
+        versionName "4.7"
     }
     signingConfigs {
         release {
@@ -22,7 +22,13 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            // 서버릿(keystore) 환경변수가 있으면 정식 서명, 없으면 디버그 키로 서명(설치는 가능)
+            def ksPath = System.getenv("KEYSTORE_PATH")
+            if (ksPath && file(ksPath).exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
         }
         debug {
             debuggable true
