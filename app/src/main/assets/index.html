@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v4.8</title>
+<title>포트폴리오 v4.9</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -179,7 +179,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'4.8'
+  ver:'4.9'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -506,7 +506,7 @@ function migratePortfolio(p){
       h.usd=true;
     });
   }
-  p.ver='4.8';
+  p.ver='4.9';
   return p;
 }
 
@@ -616,24 +616,24 @@ function rebalRows(){
     return{k,name,ev,color,tgt:t[k]||0,w,tval,diff:ev-tval,cur:c.total>0?ev/c.total*100:0};
   });
 }
-// 추가매수만으로 목표 구성 도달: X* = max(ev/w), 최종 총액 = X*, 필요 신규자금 = X*-현재총액
+// 추가매수만으로 리밸런싱: 목표 대비 부족한(diff<0) 자산군에만 배분, 이미 목표 이상(초과)인 자산군은 이번 배분에서 완전히 제외
 function newMoneyPlan(monthlyWon){
   const rows=rebalRows().filter(r=>r.w>0);
   const c=calc();
-  const Xstar=Math.max(c.total,...rows.map(r=>r.ev/r.w));
-  const needs=rows.map(r=>({k:r.k,name:r.name,color:r.color,gap:Math.max(0,Xstar*r.w-r.ev)}));
-  const totalNeed=needs.reduce((s,n)=>s+n.gap,0);
-  // 이번 달 배분: 부족액 비례, 부족 총액이 월 적립보다 작으면 나머지는 목표 비중 비례 적립
-  let M=monthlyWon,allocs=needs.map(n=>({...n,amt:0}));
-  const openNeed=needs.filter(n=>n.gap>0).reduce((s,n)=>s+n.gap,0);
-  if(openNeed>0){
-    allocs.forEach(a=>{if(a.gap>0){a.amt=Math.min(a.gap,M*a.gap/openNeed);}});
+  const short=rows.filter(r=>r.diff<0); // 목표보다 부족한 자산군만 매수 대상
+  const totalNeed=short.reduce((s,r)=>s-r.diff,0);
+  const allocs=rows.map(r=>({k:r.k,name:r.name,color:r.color,gap:r.diff<0?-r.diff:0,amt:0}));
+  // 이번 달 배분: 부족액 비례, 부족 총액이 월 적립보다 작으면 나머지는 "부족했던 자산군끼리" 목표 비중 비례로 추가 적립 (초과 자산군은 끝까지 제외)
+  let M=monthlyWon;
+  if(totalNeed>0){
+    allocs.forEach(a=>{if(a.gap>0){a.amt=Math.min(a.gap,M*a.gap/totalNeed);}});
     const used=allocs.reduce((s,a)=>s+a.amt,0);M-=used;
   }
-  if(M>1){ // 모든 부족 해결 후 잔액 → 목표 비중 비례
-    const rows2=rebalRows(),sumW=rows2.reduce((s,r)=>s+r.w,0);
-    if(sumW>0)rows2.forEach(r=>{const a=allocs.find(x=>x.k===r.k);if(a)a.amt+=M*(r.w/sumW);});
+  const sumShortW=short.reduce((s,r)=>s+r.w,0);
+  if(M>1&&sumShortW>0){
+    short.forEach(r=>{const a=allocs.find(x=>x.k===r.k);if(a)a.amt+=M*(r.w/sumShortW);});
   }
+  const Xstar=c.total+totalNeed; // 부족분을 모두 채웠을 때의 총자산(초과 자산군은 그대로 유지)
   return{Xstar,totalNeed,allocs,months:monthlyWon>0?Math.ceil(Math.max(0,totalNeed)/monthlyWon):0};
 }
 
@@ -1207,7 +1207,7 @@ function rebalScreen(){
           <div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${won(plan.totalNeed,true)}</div>
         </div>
       </div>
-      <div style="font-size:11px;color:${T.text3};margin-top:10px;padding-top:10px;border-top:1px solid ${T.border}">월 ${monthly}만원씩 <b>부족한 자산군부터</b> 채운다는 가정입니다 (초과 자산 매도 없음). 도달 시 총 자산 ${won(plan.Xstar,true)}.</div>
+      <div style="font-size:11px;color:${T.text3};margin-top:10px;padding-top:10px;border-top:1px solid ${T.border}">월 ${monthly}만원씩 <b>부족한 자산군에만</b> 배분한다는 가정입니다 (이미 목표 이상인 자산군은 매수·매도 모두 없음). 도달 시 총 자산 ${won(plan.Xstar,true)}.</div>
     </div>
 
     ${secL('목표 비중 설정')}
@@ -1237,7 +1237,7 @@ function rebalScreen(){
 
     ${secL('이번 달 배분 가이드 — 부족액 비례 자동 계산')}
     <div id="allocCards"></div>
-    <div style="font-size:10px;color:${T.text3};line-height:1.6;margin-top:2px">이번 달 ${monthly}만원을 <b>목표 대비 부족한 자산군</b>에 부족액 비율로 먼저 배분하고, 모든 부족을 채우고 남은 금액은 목표 비중대로 나눠 적립합니다. 실제 매수·매도 뒤에는 보유종목 카드의 ＋매수/－매도 버튼 또는 설정의 화면 붙여넣기로 반영하세요.</div>
+    <div style="font-size:10px;color:${T.text3};line-height:1.6;margin-top:2px">이번 달 ${monthly}만원을 <b>목표 대비 부족한 자산군에만</b> 부족액 비율로 배분합니다. 이미 목표 이상인 자산군은 배분에서 제외되고, 부족분을 모두 채우고 남은 금액은 부족했던 자산군끼리 목표 비중 비율로 나눠 적립합니다. 실제 매수·매도 뒤에는 보유종목 카드의 ＋매수/－매도 버튼 또는 설정의 화면 붙여넣기로 반영하세요.</div>
   </div>`;
 }
 
@@ -1275,7 +1275,7 @@ function renderAllocCards(){
   if(!el)return;
   const shown=plan.allocs.filter(a=>a.amt>1);
   const totalAmt=shown.reduce((s,a)=>s+a.amt,0);
-  if(!shown.length){el.innerHTML=`<div style="background:${T.card};border-radius:14px;padding:16px;border:1px solid ${T.border};color:${T.text2};font-size:12px;text-align:center">계산 가능한 목표 비중이 없습니다.</div>`;return;}
+  if(!shown.length){el.innerHTML=`<div style="background:${T.card};border-radius:14px;padding:16px;border:1px solid ${T.green}44;color:${T.green};font-size:12px;font-weight:700;text-align:center">✓ 모든 자산군이 목표 비중 이상입니다 — 이번 달은 배분할 부족 자산군이 없습니다.</div>`;return;}
   el.innerHTML=shown.map(a=>{
     const pctAmt=totalAmt>0?a.amt/totalAmt*100:0;
     return `<div style="background:${T.card};border-radius:14px;padding:12px 16px;border:1px solid ${T.border};margin-bottom:8px">
@@ -1327,7 +1327,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.8</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.9</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
