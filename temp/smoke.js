@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='4.7','버전 4.7, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='4.9','버전 4.9, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산

@@ -1,4 +1,4 @@
-# 📱 포트폴리오 앱 (v4.7)
+# 📱 포트폴리오 앱 (v4.9)
 
 증권사/코인 앱의 보유·거래 내역을 반영하고, 듀얼 스위칭 신호에 따라 자산 비중을
 어떻게 높이고 낮출지 판단하는 개인 포트폴리오 트래커입니다.
@@ -10,7 +10,7 @@ Android WebView 셸(`MainActivity.java`) + 단일 파일 웹앱(`app/src/main/as
 ### GitHub Actions (서버/로컬 환경 불필요)
 1. 이 리포를 GitHub에 push하면 **Build Portfolio APK** 워크플로가 자동 실행됩니다.
    (수동 실행도 가능: Actions 탭 → Run workflow)
-2. 완료 후 Artifacts에서 `portfolio-apk-v{버전}`(예: `portfolio-apk-v4.7`)을 다운로드 → 압축 해제.
+2. 완료 후 Artifacts에서 `portfolio-apk-v{버전}`(예: `portfolio-apk-v4.9`)을 다운로드 → 압축 해제.
 3. 정식 서명 키스토어 Secrets(`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)가
    없어도 **디버그 서명 APK**가 함께 산출되므로 바로 설치할 수 있습니다.
 4. 스마트폰에서 `.apk` 실행 → "출처를 알 수 없는 앱" 허용 → 설치.
