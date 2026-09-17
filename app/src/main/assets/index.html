@@ -90,6 +90,39 @@ async function nativeGet(url){
   return fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}}).then(r=>r.json());
 }
 
+// ── UpbitBridge 콜백 저장소 (JWT 서명·실주문은 MainActivity에서 처리, 비밀키는 JS로 넘어오지 않음) ──
+window._upbitCallbacks={};
+window.UpbitBridge=window.UpbitBridge||{};
+window.UpbitBridge._deliver=function(id){
+  const cb=window._upbitCallbacks[id];
+  if(cb){
+    const data=window.UpbitBridge.fetch?window.UpbitBridge.fetch(id):null;
+    delete window._upbitCallbacks[id];
+    cb.resolve(data);
+  }
+};
+function upbitHasKeys(){return !!(window.UpbitBridge&&window.UpbitBridge.hasKeys&&window.UpbitBridge.hasKeys());}
+function upbitCall(method,...args){
+  return new Promise((resolve,reject)=>{
+    if(!window.UpbitBridge||!window.UpbitBridge[method]){reject(new Error('업비트 브릿지를 사용할 수 없습니다(웹뷰 환경 아님).'));return;}
+    const id='u'+Date.now()+Math.random().toString(36).slice(2,6);
+    window._upbitCallbacks[id]={resolve};
+    setTimeout(()=>{if(window._upbitCallbacks[id]){delete window._upbitCallbacks[id];reject(new Error('요청 시간 초과'));}},15000);
+    try{window.UpbitBridge[method](...args,id);}
+    catch(e){delete window._upbitCallbacks[id];reject(e);}
+  }).then(raw=>{
+    let json;
+    try{json=JSON.parse(raw);}catch(e){throw new Error('응답 파싱 실패');}
+    if(json&&json.error)throw new Error(json.error.message||JSON.stringify(json.error));
+    return json;
+  });
+}
+const upbitAccounts=()=>upbitCall('accounts');
+const upbitOrderChance=market=>upbitCall('orderChance',market);
+const upbitOrderStatus=uuid=>upbitCall('orderStatus',uuid);
+const upbitCancelOrder=uuid=>upbitCall('cancelOrder',uuid);
+const upbitPlaceOrder=(market,side,volume,price,ordType)=>upbitCall('placeOrder',market,side,volume||'',price||'',ordType);
+
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
@@ -1024,6 +1057,7 @@ function holdingsScreen(){
             <button onclick="showTradeModal('${kind}','${h.id}','buy')" class="tap" style="flex:1;padding:9px;background:${T.green}1F;color:${T.green};border:1px solid ${T.green}44;border-radius:10px;font-size:12px;font-weight:700">＋ 매수 반영</button>
             <button onclick="showTradeModal('${kind}','${h.id}','sell')" class="tap" style="flex:1;padding:9px;background:${T.red}1A;color:${T.red};border:1px solid ${T.red}44;border-radius:10px;font-size:12px;font-weight:700">－ 매도 반영</button>
           </div>`:''}
+          ${!isWatch&&isCrypto?`<button onclick="showUpbitOrderModal('${h.id}')" class="tap" style="width:100%;padding:9px;margin-top:6px;background:${T.amber}1A;color:${T.amber};border:1px solid ${T.amber}44;border-radius:10px;font-size:12px;font-weight:700">⚡ 업비트 실거래 주문</button>`:''}
           ${judge?`<div style="margin-top:8px;padding:7px 10px;background:${T.bg2};border-radius:8px;font-size:12px;color:${judge.color};font-weight:700">PER ${judge.label}${judge.per?' · '+judge.per.toFixed(1)+'x':''} / 업종 ${h.indPer}x</div>`:''}
         </div>`;
       }).join('')}
@@ -1311,6 +1345,24 @@ function settingsScreen(){
     ${card(`<div style="display:flex;gap:10px"><input id="exIn" type="number" value="${portfolio.exRate}" style="flex:1"><button onclick="saveEx()" class="tap" style="padding:10px 18px;background:${T.teal};color:#000;border-radius:10px;font-weight:700">저장</button></div><div style="margin-top:8px">${btn('↻  실시간 환율 조회','fetchExRateManual()',T.blue)}</div><div style="font-size:11px;color:${T.text3};margin-top:6px">현재: 1 USD = ${portfolio.exRate.toLocaleString()} KRW</div>`)}
     ${secL('코인 가격 연동')}
     ${card(btn('↻  업비트 실시간 가격 가져오기','fetchUpbit()',T.amber))}
+
+    ${secL('업비트 실거래 주문 (선택)')}
+    ${card(`
+      <div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">
+        업비트 웹(PC) &gt; 마이페이지 &gt; Open API 관리에서 <b>자산조회·주문조회·주문하기</b> 권한만 켠 키를 발급하세요.
+        <b style="color:${T.red}">출금하기 권한은 절대 켜지 마세요.</b> 주문 기능을 쓰려면 이 앱이 사용하는 기기의 공인 IP를 등록해야 합니다.
+        키는 이 기기에만 저장되고 업비트 서버 외에는 전송되지 않습니다.
+      </div>
+      <div style="display:grid;gap:8px;margin-bottom:10px">
+        <input id="ubAccess" type="text" placeholder="Access Key" value="${esc(Store.get('upbit_access_key')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+        <input id="ubSecret" type="password" placeholder="Secret Key" value="${esc(Store.get('upbit_secret_key')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="saveUpbitKeys()" class="tap" style="flex:1;padding:11px;background:${T.teal};color:#000;border-radius:10px;font-weight:700;font-size:13px">저장</button>
+        <button onclick="testUpbitConnection()" class="tap" style="flex:1;padding:11px;background:${T.blue}22;color:${T.blue};border:1px solid ${T.blue}44;border-radius:10px;font-weight:700;font-size:13px">잔고 조회 테스트</button>
+      </div>
+      <div id="ubStatus" style="font-size:11px;color:${T.text3};margin-top:8px">${upbitHasKeys()?'✅ API 키 저장됨 — 종목 탭의 코인 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키를 등록하세요'}</div>
+    `)}
 
     ${secL('거래내역 / 보유종목 화면 반영')}
     ${card(`
@@ -1974,6 +2026,136 @@ function addSwitchMonth(key){
 }
 function removeSwitchMonth(key){if(portfolio.switching[key].length>4)portfolio.switching[key].pop();Store.set('porto',JSON.stringify(portfolio));render();}
 async function fetchUpbit(){try{const codes=portfolio.holdings.crypto.map(h=>h.upbit).join(',');const arr=await nativeGet('https://api.upbit.com/v1/ticker?markets='+codes);const m={};arr.forEach(d=>{m[d.market]=d.trade_price;});portfolio.holdings.crypto=portfolio.holdings.crypto.map(h=>({...h,cur:m[h.upbit]??h.cur}));Store.set('porto',JSON.stringify(portfolio));alert('✅ 업비트 업데이트 완료');render();}catch(e){alert('실패: '+e.message);}}
+
+function saveUpbitKeys(){
+  const ak=document.getElementById('ubAccess').value.trim();
+  const sk=document.getElementById('ubSecret').value.trim();
+  if(!ak||!sk){alert('Access Key와 Secret Key를 모두 입력하세요.');return;}
+  Store.set('upbit_access_key',ak);
+  Store.set('upbit_secret_key',sk);
+  alert('✅ 저장 완료');
+  render();
+}
+async function testUpbitConnection(){
+  const el=document.getElementById('ubStatus');
+  if(el)el.textContent='조회 중...';
+  try{
+    const accs=await upbitAccounts();
+    const krw=(accs||[]).find(a=>a.currency==='KRW');
+    alert('✅ 연결 성공\nKRW 잔고: '+(krw?won(+krw.balance,true):'0')+'원\n보유 자산 '+(accs?accs.length:0)+'종');
+  }catch(e){alert('❌ 연결 실패: '+e.message);}
+  if(el)el.textContent=upbitHasKeys()?'✅ API 키 저장됨 — 종목 탭의 코인 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키를 등록하세요';
+}
+
+// ── 업비트 실거래 주문 모달 ──
+function showUpbitOrderModal(id){
+  const entry=findEntry(id);
+  if(!entry||!entry.h.upbit){alert('업비트 코인이 아닙니다.');return;}
+  if(!upbitHasKeys()){alert('설정 탭에서 업비트 API 키를 먼저 등록하세요.');return;}
+  window._ubOrder={id,side:'bid',type:'limit'};
+  showModal(ubOrderHtml());
+  setTimeout(()=>document.getElementById('ubQty')?.focus(),300);
+}
+function ubOrderHtml(){
+  const st=window._ubOrder;
+  const entry=findEntry(st.id);
+  const h=entry.h;
+  const isSell=st.side==='ask';
+  const isMkt=st.type!=='limit';
+  const lastOrder=window._ubLastOrder&&window._ubLastOrder.id===st.id?window._ubLastOrder:null;
+  return `<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.amber};margin-bottom:4px">⚡ 업비트 실거래 주문</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:14px">${esc(h.name)} (${h.upbit}) · 보유 ${h.qty.toFixed(8)}개 · <b style="color:${T.red}">실제 계좌에 주문이 전송됩니다</b></div>
+    ${lastOrder?`<div style="background:${T.bg2};border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:12px;color:${T.text2};margin-bottom:8px">최근 주문 UUID: ${lastOrder.uuid.slice(0,13)}...</div>
+      <button onclick="checkUpbitFill()" class="tap" style="width:100%;padding:9px;background:${T.blue}22;color:${T.blue};border-radius:8px;font-size:12px;font-weight:700">체결 상태 확인 → 포트폴리오 반영</button>
+    </div>`:''}
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button onclick="ubSetSide('bid')" class="tap" style="flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:700;background:${!isSell?T.green:T.bg3};color:${!isSell?'#fff':T.text2}">매수</button>
+      <button onclick="ubSetSide('ask')" class="tap" style="flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:700;background:${isSell?T.red:T.bg3};color:${isSell?'#fff':T.text2}">매도</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="ubSetType('limit')" class="tap" style="flex:1;padding:8px;border-radius:10px;font-size:12px;font-weight:700;background:${!isMkt?T.blue:T.bg3};color:${!isMkt?'#fff':T.text2}">지정가</button>
+      <button onclick="ubSetType('market')" class="tap" style="flex:1;padding:8px;border-radius:10px;font-size:12px;font-weight:700;background:${isMkt?T.blue:T.bg3};color:${isMkt?'#fff':T.text2}">시장가</button>
+    </div>
+    <div style="display:grid;gap:10px;margin-bottom:14px">
+      ${!isMkt?`
+        <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">수량</div><input type="number" id="ubQty" placeholder="0" step="0.00000001"></div>
+        <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">가격 (KRW)</div><input type="number" id="ubPrice" placeholder="0" step="any" value="${h.cur||''}"></div>`
+      :isSell?`
+        <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">수량 (보유 ${h.qty.toFixed(8)})</div><input type="number" id="ubQty" placeholder="0" step="0.00000001">
+          <button onclick="document.getElementById('ubQty').value='${h.qty}'" class="tap" style="margin-top:6px;padding:6px 10px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:11px">전량 입력</button>
+        </div>`
+      :`
+        <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">매수 금액 (KRW)</div><input type="number" id="ubAmount" placeholder="0" step="1"></div>`}
+    </div>
+    <div style="font-size:11px;color:${T.text3};margin-bottom:14px">체결 후 이 모달을 다시 열어 '체결 상태 확인'으로 보유 수량·평균단가에 실제 체결가를 반영할 수 있습니다.</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="confirmUpbitOrder()" class="tap" style="flex:1;padding:14px;background:${isSell?T.red:T.green};color:#fff;border-radius:12px;font-size:15px;font-weight:700">${isSell?'매도 주문 전송':'매수 주문 전송'}</button>
+      <button onclick="closeModal()" class="tap" style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
+    </div>`;
+}
+function ubSetSide(s){window._ubOrder.side=s;showModal(ubOrderHtml());}
+function ubSetType(t){window._ubOrder.type=t;showModal(ubOrderHtml());}
+async function confirmUpbitOrder(){
+  const st=window._ubOrder;
+  const entry=findEntry(st.id);
+  const h=entry.h,market=h.upbit,side=st.side,isMkt=st.type!=='limit';
+  let volume=null,price=null,ordType;
+  if(!isMkt){
+    volume=parseFloat(document.getElementById('ubQty')?.value);
+    price=parseFloat(document.getElementById('ubPrice')?.value);
+    if(!(volume>0)){alert('수량을 입력하세요.');return;}
+    if(!(price>0)){alert('가격을 입력하세요.');return;}
+    ordType='limit';
+  }else if(side==='ask'){
+    volume=parseFloat(document.getElementById('ubQty')?.value);
+    if(!(volume>0)){alert('수량을 입력하세요.');return;}
+    if(volume>h.qty+1e-9){alert('보유 수량('+h.qty+')보다 많이 매도할 수 없습니다.');return;}
+    ordType='market';
+  }else{
+    price=parseFloat(document.getElementById('ubAmount')?.value);
+    if(!(price>0)){alert('매수 금액을 입력하세요.');return;}
+    ordType='price';
+  }
+  if(!confirm((side==='ask'?'매도':'매수')+' 주문을 업비트 실계좌에 전송합니다. 계속할까요?'))return;
+  try{
+    const res=await upbitPlaceOrder(market,side,volume!=null?String(volume):'',price!=null?String(price):'',ordType);
+    window._ubLastOrder={uuid:res.uuid,id:st.id,side};
+    closeModal();
+    setTimeout(()=>alert('✅ 주문 접수됨\n상태: '+res.state+'\nUUID: '+res.uuid+'\n\n⚡ 버튼을 다시 눌러 체결 상태를 확인하세요.'),50);
+  }catch(e){
+    alert('❌ 주문 실패: '+e.message);
+  }
+}
+async function checkUpbitFill(){
+  const last=window._ubLastOrder;
+  if(!last)return;
+  try{
+    const o=await upbitOrderStatus(last.uuid);
+    const trades=o.trades||[];
+    let totalFunds=0,totalVol=0;
+    trades.forEach(t=>{totalFunds+=parseFloat(t.funds||0);totalVol+=parseFloat(t.volume||0);});
+    const executedVolume=totalVol||parseFloat(o.executed_volume||0);
+    if(!(executedVolume>0)){alert('아직 체결되지 않았습니다.\n상태: '+o.state);return;}
+    const entry=findEntry(last.id);
+    if(!entry){alert('종목을 찾을 수 없습니다.');return;}
+    const avgPrice=totalFunds>0?totalFunds/executedVolume:parseFloat(o.price||entry.h.cur||0);
+    const fee=parseFloat(o.paid_fee||0);
+    const sideWord=last.side==='ask'?'sell':'buy';
+    if(!confirm('체결 수량 '+executedVolume+'개 @ '+won(avgPrice)+'원을 포트폴리오에 반영할까요?'))return;
+    const res=applyTrade(entry.h,'crypto',sideWord,executedVolume,avgPrice,fee,today());
+    if(res.closed)removeHoldingEntry('crypto',entry.h);
+    else entry.h.cur=avgPrice;
+    save();
+    window._ubLastOrder=null;
+    closeModal();
+    render();
+    let msg='✅ 포트폴리오 반영 완료';
+    if(sideWord==='sell')msg+='\n실현손익: '+(res.realizedKRW>=0?'+':'')+won(res.realizedKRW,true)+'원';
+    setTimeout(()=>alert(msg),50);
+  }catch(e){alert('조회 실패: '+e.message);}
+}
 function saveEx(){const v=+document.getElementById('exIn').value;if(v>0){portfolio.exRate=v;Store.set('porto',JSON.stringify(portfolio));render();}}
 function resetPortfolio(){
   showModal(`<div class="sheet-handle"></div>
