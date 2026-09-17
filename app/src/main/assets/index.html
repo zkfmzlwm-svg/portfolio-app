@@ -123,6 +123,67 @@ const upbitOrderStatus=uuid=>upbitCall('orderStatus',uuid);
 const upbitCancelOrder=uuid=>upbitCall('cancelOrder',uuid);
 const upbitPlaceOrder=(market,side,volume,price,ordType)=>upbitCall('placeOrder',market,side,volume||'',price||'',ordType);
 
+// ── KisBridge / KiwoomBridge 콜백 저장소 (업비트와 동일한 프로토콜) ──
+window._kisCallbacks={};
+window.KisBridge=window.KisBridge||{};
+window.KisBridge._deliver=function(id){
+  const cb=window._kisCallbacks[id];
+  if(cb){
+    const data=window.KisBridge.fetch?window.KisBridge.fetch(id):null;
+    delete window._kisCallbacks[id];
+    cb.resolve(data);
+  }
+};
+function kisHasKeys(){return !!(window.KisBridge&&window.KisBridge.hasKeys&&window.KisBridge.hasKeys());}
+function kisCall(method,...args){
+  return new Promise((resolve,reject)=>{
+    if(!window.KisBridge||!window.KisBridge[method]){reject(new Error('한국투자증권 브릿지를 사용할 수 없습니다(웹뷰 환경 아님).'));return;}
+    const id='k'+Date.now()+Math.random().toString(36).slice(2,6);
+    window._kisCallbacks[id]={resolve};
+    setTimeout(()=>{if(window._kisCallbacks[id]){delete window._kisCallbacks[id];reject(new Error('요청 시간 초과'));}},15000);
+    try{window.KisBridge[method](...args,id);}
+    catch(e){delete window._kisCallbacks[id];reject(e);}
+  }).then(raw=>{
+    let json;
+    try{json=JSON.parse(raw);}catch(e){throw new Error('응답 파싱 실패');}
+    if(json&&json.error)throw new Error(json.error.message||JSON.stringify(json.error));
+    if(json&&json.rt_cd&&json.rt_cd!=='0')throw new Error(json.msg1||('오류 '+json.rt_cd));
+    return json;
+  });
+}
+const kisTestConnection=demo=>kisCall('testConnection',demo);
+const kisPlaceOrder=(demo,side,pdno,ordDvsn,qty,price)=>kisCall('placeOrder',demo,side,pdno,ordDvsn,String(qty),String(price));
+
+window._kiwoomCallbacks={};
+window.KiwoomBridge=window.KiwoomBridge||{};
+window.KiwoomBridge._deliver=function(id){
+  const cb=window._kiwoomCallbacks[id];
+  if(cb){
+    const data=window.KiwoomBridge.fetch?window.KiwoomBridge.fetch(id):null;
+    delete window._kiwoomCallbacks[id];
+    cb.resolve(data);
+  }
+};
+function kiwoomHasKeys(){return !!(window.KiwoomBridge&&window.KiwoomBridge.hasKeys&&window.KiwoomBridge.hasKeys());}
+function kiwoomCall(method,...args){
+  return new Promise((resolve,reject)=>{
+    if(!window.KiwoomBridge||!window.KiwoomBridge[method]){reject(new Error('키움증권 브릿지를 사용할 수 없습니다(웹뷰 환경 아님).'));return;}
+    const id='w'+Date.now()+Math.random().toString(36).slice(2,6);
+    window._kiwoomCallbacks[id]={resolve};
+    setTimeout(()=>{if(window._kiwoomCallbacks[id]){delete window._kiwoomCallbacks[id];reject(new Error('요청 시간 초과'));}},15000);
+    try{window.KiwoomBridge[method](...args,id);}
+    catch(e){delete window._kiwoomCallbacks[id];reject(e);}
+  }).then(raw=>{
+    let json;
+    try{json=JSON.parse(raw);}catch(e){throw new Error('응답 파싱 실패');}
+    if(json&&json.error)throw new Error(json.error.message||JSON.stringify(json.error));
+    if(json&&json.return_code&&json.return_code!==0)throw new Error(json.return_msg||('오류 '+json.return_code));
+    return json;
+  });
+}
+const kiwoomTestConnection=mock=>kiwoomCall('testConnection',mock);
+const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrder',mock,side,stkCd,trdeTp,String(qty),String(price));
+
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
@@ -1058,6 +1119,7 @@ function holdingsScreen(){
             <button onclick="showTradeModal('${kind}','${h.id}','sell')" class="tap" style="flex:1;padding:9px;background:${T.red}1A;color:${T.red};border:1px solid ${T.red}44;border-radius:10px;font-size:12px;font-weight:700">－ 매도 반영</button>
           </div>`:''}
           ${!isWatch&&isCrypto?`<button onclick="showUpbitOrderModal('${h.id}')" class="tap" style="width:100%;padding:9px;margin-top:6px;background:${T.amber}1A;color:${T.amber};border:1px solid ${T.amber}44;border-radius:10px;font-size:12px;font-weight:700">⚡ 업비트 실거래 주문</button>`:''}
+          ${!isWatch&&kind==='kr'&&(kisHasKeys()||kiwoomHasKeys())?`<button onclick="showBrokerOrderModal('${h.id}')" class="tap" style="width:100%;padding:9px;margin-top:6px;background:${T.amber}1A;color:${T.amber};border:1px solid ${T.amber}44;border-radius:10px;font-size:12px;font-weight:700">⚡ 증권사 실거래 주문</button>`:''}
           ${judge?`<div style="margin-top:8px;padding:7px 10px;background:${T.bg2};border-radius:8px;font-size:12px;color:${judge.color};font-weight:700">PER ${judge.label}${judge.per?' · '+judge.per.toFixed(1)+'x':''} / 업종 ${h.indPer}x</div>`:''}
         </div>`;
       }).join('')}
@@ -1362,6 +1424,53 @@ function settingsScreen(){
         <button onclick="testUpbitConnection()" class="tap" style="flex:1;padding:11px;background:${T.blue}22;color:${T.blue};border:1px solid ${T.blue}44;border-radius:10px;font-weight:700;font-size:13px">잔고 조회 테스트</button>
       </div>
       <div id="ubStatus" style="font-size:11px;color:${T.text3};margin-top:8px">${upbitHasKeys()?'✅ API 키 저장됨 — 종목 탭의 코인 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키를 등록하세요'}</div>
+    `)}
+
+    ${secL('한국투자증권 실거래 주문 (선택)')}
+    ${card(`
+      <div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">
+        KIS Developers(apiportal.koreainvestment.com)에서 오픈API 신청 후 앱키/앱시크릿을 발급받으세요.
+        국내주식 현금 매수/매도만 지원하며(해외주식·신용거래 제외), 처음에는 <b>모의투자</b>로 먼저 테스트하는 것을 권장합니다.
+        키는 이 기기에만 저장됩니다.
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button onclick="setKisEnv(false)" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${Store.get('kis_demo')!=='1'?T.red:T.bg3};color:${Store.get('kis_demo')!=='1'?'#fff':T.text2}">실전투자</button>
+        <button onclick="setKisEnv(true)" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${Store.get('kis_demo')==='1'?T.blue:T.bg3};color:${Store.get('kis_demo')==='1'?'#fff':T.text2}">모의투자</button>
+      </div>
+      <div style="display:grid;gap:8px;margin-bottom:10px">
+        <input id="kisAppKey" type="text" placeholder="App Key" value="${esc(Store.get('kis_app_key')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+        <input id="kisAppSecret" type="password" placeholder="App Secret" value="${esc(Store.get('kis_app_secret')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+          <input id="kisCano" type="text" placeholder="계좌번호 앞 8자리" value="${esc(Store.get('kis_cano')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+          <input id="kisPrdtCd" type="text" placeholder="상품코드(2자리)" value="${esc(Store.get('kis_prdt_cd')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="saveKisKeys()" class="tap" style="flex:1;padding:11px;background:${T.teal};color:#000;border-radius:10px;font-weight:700;font-size:13px">저장</button>
+        <button onclick="testKisConnection()" class="tap" style="flex:1;padding:11px;background:${T.blue}22;color:${T.blue};border:1px solid ${T.blue}44;border-radius:10px;font-weight:700;font-size:13px">연결 테스트</button>
+      </div>
+      <div id="kisStatus" style="font-size:11px;color:${T.text3};margin-top:8px">${kisHasKeys()?'✅ API 키 저장됨 — 국내주식 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키·계좌번호를 등록하세요'}</div>
+    `)}
+
+    ${secL('키움증권 실거래 주문 (선택)')}
+    ${card(`
+      <div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">
+        키움 REST API(openapi.kiwoom.com)에서 앱키/시크릿키를 발급받으세요. 국내주식 현금 매수/매도만 지원합니다.
+        모의투자로 먼저 테스트하는 것을 권장합니다. 키는 이 기기에만 저장됩니다.
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button onclick="setKiwoomEnv(false)" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${Store.get('kiwoom_mock')!=='1'?T.red:T.bg3};color:${Store.get('kiwoom_mock')!=='1'?'#fff':T.text2}">실전투자</button>
+        <button onclick="setKiwoomEnv(true)" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${Store.get('kiwoom_mock')==='1'?T.blue:T.bg3};color:${Store.get('kiwoom_mock')==='1'?'#fff':T.text2}">모의투자</button>
+      </div>
+      <div style="display:grid;gap:8px;margin-bottom:10px">
+        <input id="kiwoomAppKey" type="text" placeholder="App Key" value="${esc(Store.get('kiwoom_app_key')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+        <input id="kiwoomAppSecret" type="password" placeholder="Secret Key" value="${esc(Store.get('kiwoom_app_secret')||'')}" style="width:100%;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:11px;font-size:13px;font-family:monospace">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="saveKiwoomKeys()" class="tap" style="flex:1;padding:11px;background:${T.teal};color:#000;border-radius:10px;font-weight:700;font-size:13px">저장</button>
+        <button onclick="testKiwoomConnection()" class="tap" style="flex:1;padding:11px;background:${T.blue}22;color:${T.blue};border:1px solid ${T.blue}44;border-radius:10px;font-weight:700;font-size:13px">연결 테스트</button>
+      </div>
+      <div id="kiwoomStatus" style="font-size:11px;color:${T.text3};margin-top:8px">${kiwoomHasKeys()?'✅ API 키 저장됨 — 국내주식 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키를 등록하세요'}</div>
     `)}
 
     ${secL('거래내역 / 보유종목 화면 반영')}
@@ -2047,6 +2156,46 @@ async function testUpbitConnection(){
   if(el)el.textContent=upbitHasKeys()?'✅ API 키 저장됨 — 종목 탭의 코인 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키를 등록하세요';
 }
 
+function setKisEnv(demo){Store.set('kis_demo',demo?'1':'0');render();}
+function saveKisKeys(){
+  const ak=document.getElementById('kisAppKey').value.trim();
+  const as=document.getElementById('kisAppSecret').value.trim();
+  const cano=document.getElementById('kisCano').value.trim();
+  const prdt=document.getElementById('kisPrdtCd').value.trim();
+  if(!ak||!as||!cano||!prdt){alert('App Key·App Secret·계좌번호·상품코드를 모두 입력하세요.');return;}
+  Store.set('kis_app_key',ak);Store.set('kis_app_secret',as);Store.set('kis_cano',cano);Store.set('kis_prdt_cd',prdt);
+  alert('✅ 저장 완료');
+  render();
+}
+async function testKisConnection(){
+  const el=document.getElementById('kisStatus');
+  if(el)el.textContent='토큰 발급 확인 중...';
+  try{
+    await kisTestConnection(Store.get('kis_demo')==='1');
+    alert('✅ 연결 성공 (토큰 발급 확인됨)');
+  }catch(e){alert('❌ 연결 실패: '+e.message);}
+  if(el)el.textContent=kisHasKeys()?'✅ API 키 저장됨 — 국내주식 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키·계좌번호를 등록하세요';
+}
+
+function setKiwoomEnv(mock){Store.set('kiwoom_mock',mock?'1':'0');render();}
+function saveKiwoomKeys(){
+  const ak=document.getElementById('kiwoomAppKey').value.trim();
+  const as=document.getElementById('kiwoomAppSecret').value.trim();
+  if(!ak||!as){alert('App Key·Secret Key를 모두 입력하세요.');return;}
+  Store.set('kiwoom_app_key',ak);Store.set('kiwoom_app_secret',as);
+  alert('✅ 저장 완료');
+  render();
+}
+async function testKiwoomConnection(){
+  const el=document.getElementById('kiwoomStatus');
+  if(el)el.textContent='토큰 발급 확인 중...';
+  try{
+    await kiwoomTestConnection(Store.get('kiwoom_mock')==='1');
+    alert('✅ 연결 성공 (토큰 발급 확인됨)');
+  }catch(e){alert('❌ 연결 실패: '+e.message);}
+  if(el)el.textContent=kiwoomHasKeys()?'✅ API 키 저장됨 — 국내주식 카드에서 ⚡ 실거래 주문을 쓸 수 있습니다':'미설정 — 실거래 주문을 쓰려면 키를 등록하세요';
+}
+
 // ── 업비트 실거래 주문 모달 ──
 function showUpbitOrderModal(id){
   const entry=findEntry(id);
@@ -2156,6 +2305,92 @@ async function checkUpbitFill(){
     setTimeout(()=>alert(msg),50);
   }catch(e){alert('조회 실패: '+e.message);}
 }
+
+// ── 한국투자증권/키움증권 실거래 주문 모달 (국내주식 현금 매수·매도) ──
+function showBrokerOrderModal(id){
+  const entry=findEntry(id);
+  if(!entry||!entry.h.code){alert('종목코드가 없는 종목입니다.');return;}
+  const hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
+  if(!hasKis&&!hasKiwoom){alert('설정 탭에서 한국투자증권 또는 키움증권 API 키를 먼저 등록하세요.');return;}
+  window._bkOrder={id,broker:hasKis?'kis':'kiwoom',side:'buy',type:'limit'};
+  showModal(bkOrderHtml());
+  setTimeout(()=>document.getElementById('bkQty')?.focus(),300);
+}
+function bkOrderHtml(){
+  const st=window._bkOrder;
+  const entry=findEntry(st.id);
+  const h=entry.h;
+  const hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
+  const isSell=st.side==='sell';
+  const isMkt=st.type!=='limit';
+  const brokerName=st.broker==='kis'?'한국투자증권':'키움증권';
+  const envLabel=st.broker==='kis'?(Store.get('kis_demo')==='1'?'모의투자':'실전투자'):(Store.get('kiwoom_mock')==='1'?'모의투자':'실전투자');
+  return `<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.amber};margin-bottom:4px">⚡ 증권사 실거래 주문</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:14px">${esc(h.name)} (${h.code}) · 보유 ${h.qty.toLocaleString()}주 · <b style="color:${T.red}">${brokerName} ${envLabel} 계좌로 전송됩니다</b></div>
+    ${hasKis&&hasKiwoom?`<div style="display:flex;gap:8px;margin-bottom:8px">
+      <button onclick="bkSetBroker('kis')" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${st.broker==='kis'?T.teal:T.bg3};color:${st.broker==='kis'?'#000':T.text2}">한국투자증권</button>
+      <button onclick="bkSetBroker('kiwoom')" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${st.broker==='kiwoom'?T.teal:T.bg3};color:${st.broker==='kiwoom'?'#000':T.text2}">키움증권</button>
+    </div>`:''}
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button onclick="bkSetSide('buy')" class="tap" style="flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:700;background:${!isSell?T.green:T.bg3};color:${!isSell?'#fff':T.text2}">매수</button>
+      <button onclick="bkSetSide('sell')" class="tap" style="flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:700;background:${isSell?T.red:T.bg3};color:${isSell?'#fff':T.text2}">매도</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="bkSetType('limit')" class="tap" style="flex:1;padding:8px;border-radius:10px;font-size:12px;font-weight:700;background:${!isMkt?T.blue:T.bg3};color:${!isMkt?'#fff':T.text2}">지정가</button>
+      <button onclick="bkSetType('market')" class="tap" style="flex:1;padding:8px;border-radius:10px;font-size:12px;font-weight:700;background:${isMkt?T.blue:T.bg3};color:${isMkt?'#fff':T.text2}">시장가</button>
+    </div>
+    <div style="display:grid;gap:10px;margin-bottom:14px">
+      <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">수량${isSell?' (보유 '+h.qty.toLocaleString()+'주)':''}</div><input type="number" id="bkQty" placeholder="0" step="1">
+        ${isSell?`<button onclick="document.getElementById('bkQty').value='${h.qty}'" class="tap" style="margin-top:6px;padding:6px 10px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:11px">전량 입력</button>`:''}
+      </div>
+      ${!isMkt?`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">가격 (원)</div><input type="number" id="bkPrice" placeholder="0" step="1" value="${h.cur||''}"></div>`:''}
+    </div>
+    <div style="font-size:11px;color:${T.text3};margin-bottom:14px">체결 여부는 증권사 앱에서 직접 확인하세요. 체결 후 종목 카드의 ＋매수/－매도 반영 버튼으로 보유 수량에 기록해야 합니다(자동 반영되지 않습니다).</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="confirmBrokerOrder()" class="tap" style="flex:1;padding:14px;background:${isSell?T.red:T.green};color:#fff;border-radius:12px;font-size:15px;font-weight:700">${isSell?'매도 주문 전송':'매수 주문 전송'}</button>
+      <button onclick="closeModal()" class="tap" style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
+    </div>`;
+}
+function bkSetBroker(b){window._bkOrder.broker=b;showModal(bkOrderHtml());}
+function bkSetSide(s){window._bkOrder.side=s;showModal(bkOrderHtml());}
+function bkSetType(t){window._bkOrder.type=t;showModal(bkOrderHtml());}
+async function confirmBrokerOrder(){
+  const st=window._bkOrder;
+  const entry=findEntry(st.id);
+  const h=entry.h;
+  const isSell=st.side==='sell';
+  const isMkt=st.type!=='limit';
+  const qty=parseInt(document.getElementById('bkQty')?.value,10);
+  if(!(qty>0)){alert('수량을 입력하세요.');return;}
+  if(isSell&&qty>h.qty+1e-9){alert('보유 수량('+h.qty+')보다 많이 매도할 수 없습니다.');return;}
+  let price=0;
+  if(!isMkt){
+    price=parseInt(document.getElementById('bkPrice')?.value,10);
+    if(!(price>0)){alert('가격을 입력하세요.');return;}
+  }
+  const brokerName=st.broker==='kis'?'한국투자증권':'키움증권';
+  if(!confirm((isSell?'매도':'매수')+' 주문을 '+brokerName+' 실계좌에 전송합니다. 계속할까요?'))return;
+  try{
+    let res,orderNo;
+    if(st.broker==='kis'){
+      const demo=Store.get('kis_demo')==='1';
+      const ordDvsn=isMkt?'01':'00';
+      res=await kisPlaceOrder(demo,st.side,h.code,ordDvsn,qty,isMkt?0:price);
+      orderNo=res.output&&res.output.ODNO||'-';
+    }else{
+      const mock=Store.get('kiwoom_mock')==='1';
+      const trdeTp=isMkt?'03':'00';
+      res=await kiwoomPlaceOrder(mock,st.side,h.code,trdeTp,qty,isMkt?0:price);
+      orderNo=res.ord_no||(res.output&&res.output.ord_no)||'-';
+    }
+    closeModal();
+    setTimeout(()=>alert('✅ 주문 접수됨\n주문번호: '+orderNo+'\n\n체결 확인 후 ＋매수/－매도 반영 버튼으로 직접 기록하세요.'),50);
+  }catch(e){
+    alert('❌ 주문 실패: '+e.message);
+  }
+}
+
 function saveEx(){const v=+document.getElementById('exIn').value;if(v>0){portfolio.exRate=v;Store.set('porto',JSON.stringify(portfolio));render();}}
 function resetPortfolio(){
   showModal(`<div class="sheet-handle"></div>
