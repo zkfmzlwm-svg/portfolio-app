@@ -965,16 +965,10 @@ function runWatchlistAlgorithm(){
   return removed;
 }
 
-// ── 백그라운드(WorkManager 헤드리스 WebView) 진입점 ──
-// 네이티브 PortfolioUpdateWorker가 화면 없이 이 함수만 호출한다.
-// window.HeadlessBridge가 있을 때만(=헤드리스 실행 시에만) 완료 신호를 보낸다.
-async function headlessUpdate(){
-  try{
-    await updateAllPrices();
-    if(window.HeadlessBridge&&window.HeadlessBridge.done)window.HeadlessBridge.done('ok');
-  }catch(e){
-    if(window.HeadlessBridge&&window.HeadlessBridge.done)window.HeadlessBridge.done('error:'+(e&&e.message||e));
-  }
+// ── 앱 실행 시 자동 갱신 진입점 ──
+// MainActivity가 WebView 페이지 로드 완료 직후 이 함수만 호출한다(앱을 열 때마다 1회).
+async function autoUpdateOnLaunch(){
+  try{ await updateAllPrices(); }catch(e){}
 }
 
 // ── 종목 검색 (v3.5: 네이버 통합검색 front-api + 야후 백업) ──
