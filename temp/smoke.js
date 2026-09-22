@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='4.9','버전 4.9, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='5.0','버전 5.0, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -109,7 +109,26 @@ const mixed=run('overallSignal()');
 ok(mixed.s==='mixed'||mixed.s==='bear','한쪽 bull 한쪽 bear → 혼조/약세 처리, got '+mixed.s);
 ok(run('regimeKey(overallSignal())')==='neutral','혼조→중립 프리셋');
 
-// 7. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
+// 7. 워치리스트 자체 알고리즘 (목표가 상승여력 + PER 저평가도 스코어링, 자동 제외/정렬)
+run(`portfolio.holdings.watchlist=[
+  {id:'wa',name:'매력종목',cur:100000,targetPrice:150000,eps:10000,indPer:8},
+  {id:'wb',name:'제외대상',cur:200000,targetPrice:100000,eps:2000,indPer:5},
+  {id:'wc',name:'고정종목',cur:200000,targetPrice:100000,eps:2000,indPer:5,pinned:true},
+  {id:'wd',name:'데이터없음'},
+]`);
+ok(run("watchlistScore(portfolio.holdings.watchlist.find(h=>h.id==='wd'))")===null,'점수 산출 불가 시 null');
+const scoreA=run("watchlistScore(portfolio.holdings.watchlist.find(h=>h.id==='wa'))");
+const scoreB=run("watchlistScore(portfolio.holdings.watchlist.find(h=>h.id==='wb'))");
+ok(scoreA>0,'상승여력·저평가 종목 점수>0: '+scoreA);
+ok(scoreB<0,'목표가 초과·고평가 종목 점수<0: '+scoreB);
+const removed=run('runWatchlistAlgorithm()');
+const namesAfter=run("portfolio.holdings.watchlist.map(h=>h.name)");
+ok(removed.includes('제외대상'),'점수 낮은 미고정 종목 자동 제외: '+removed);
+ok(!namesAfter.includes('제외대상'),'제외된 종목이 실제 배열에서도 빠짐');
+ok(namesAfter.includes('고정종목'),'📌 고정 종목은 점수 낮아도 유지');
+ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목), got '+namesAfter[0]);
+
+// 8. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
 run("portfolio=migratePortfolio(JSON.parse(localStorage.getItem('porto'))||JSON.parse(JSON.stringify(INIT)))");
 // 주의: 위에서 직렬화된 포트폴리오 사용
 for(const t of['home','holdings','switching','rebal','analysis','settings']){

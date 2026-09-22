@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v4.9</title>
+<title>포트폴리오 v5.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -273,7 +273,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'4.9'
+  ver:'5.0'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -600,7 +600,7 @@ function migratePortfolio(p){
       h.usd=true;
     });
   }
-  p.ver='4.9';
+  p.ver='5.0';
   return p;
 }
 
@@ -827,6 +827,47 @@ function overallSignal(){
 async function fetchKrPrice(code){try{const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic');const p=parseInt((d.closePrice||'').replace(/,/g,''));return isNaN(p)?null:p;}catch(e){return null;}}
 async function fetchUsPrice(ticker){try{const d=await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/'+ticker+'?interval=1d&range=1d');return d?.chart?.result?.[0]?.meta?.regularMarketPrice||null;}catch(e){return null;}}
 
+// 응답 JSON을 재귀 탐색해 name/title에 '목표주가'를 포함하는 항목의 value를 찾는다
+// (네이버 모바일 API는 통계 항목을 {name,value} 형태 배열로 내려주는 경우가 많아, 정확한 키 경로가
+//  바뀌어도(문서화되지 않음) 라벨 기준 매칭이 더 안정적이다)
+function findLabeledValue(node,labelRe,depth){
+  if(depth==null)depth=0;
+  if(!node||typeof node!=='object'||depth>6)return null;
+  if(Array.isArray(node)){
+    for(const item of node){const r=findLabeledValue(item,labelRe,depth+1);if(r!=null)return r;}
+    return null;
+  }
+  const label=node.name||node.title||node.itemName||node.label;
+  if(typeof label==='string'&&labelRe.test(label)){
+    const raw=node.value??node.val??node.price??node.compareValue;
+    if(raw!=null){
+      const p=parseFloat(String(raw).replace(/,/g,''));
+      if(!isNaN(p)&&p>0)return p;
+    }
+  }
+  for(const k in node){
+    if(k==='name'||k==='title'||k==='itemName'||k==='label')continue;
+    const r=findLabeledValue(node[k],labelRe,depth+1);
+    if(r!=null)return r;
+  }
+  return null;
+}
+// 국내: 네이버 증권사 목표주가 컨센서스 (문서화되지 않은 API 라벨 기반 매칭 — 실패해도 조용히 null)
+async function fetchKrTargetPrice(code){
+  try{
+    const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/integration');
+    return findLabeledValue(d,/목표주가/);
+  }catch(e){return null;}
+}
+// 해외: 야후 파이낸스 애널리스트 평균 목표주가(financialData.targetMeanPrice)
+async function fetchUsTargetPrice(ticker){
+  try{
+    const d=await nativeGet('https://query1.finance.yahoo.com/v10/finance/quoteSummary/'+ticker+'?modules=financialData');
+    const p=d?.quoteSummary?.result?.[0]?.financialData?.targetMeanPrice?.raw;
+    return p>0?p:null;
+  }catch(e){return null;}
+}
+
 // ── 실시간 환율(USD/KRW) ──
 async function fetchExRate(){
   try{
@@ -874,16 +915,66 @@ async function updateAllPrices(){
   for(const h of portfolio.holdings.bonds){const p=await fetchUsPrice(h.ticker);if(p){h.cur=p;n++;}}
   const codes=portfolio.holdings.crypto.map(h=>h.upbit).join(',');
   try{const arr=await nativeGet('https://api.upbit.com/v1/ticker?markets='+codes);const m={};arr.forEach(d=>{m[d.market]=d.trade_price;});portfolio.holdings.crypto=portfolio.holdings.crypto.map(h=>({...h,cur:m[h.upbit]??h.cur}));n+=arr.length;}catch(e){}
-  // 워치리스트 가격 갱신 (PER·진입가는 렌더 시 현재가 기준 자동 재계산)
-  logs=[...logs,'워치리스트 가격·PER 재계산...'];render();
+  // 워치리스트 가격·목표주가 컨센서스 갱신 (PER·진입가는 렌더 시 현재가 기준 자동 재계산)
+  logs=[...logs,'워치리스트 가격·목표주가 재계산...'];render();
   for(const h of portfolio.holdings.watchlist){
-    if(h.usd&&h.ticker){const p=await fetchUsPrice(h.ticker);if(p){h.cur=p;n++;}}
-    else if(h.code){const p=await fetchKrPrice(h.code);if(p){h.cur=p;n++;}}
+    if(h.usd&&h.ticker){
+      const p=await fetchUsPrice(h.ticker);if(p){h.cur=p;n++;}
+      const tp=await fetchUsTargetPrice(h.ticker);if(tp){h.targetPrice=Math.round(tp*100)/100;}
+    }else if(h.code){
+      const p=await fetchKrPrice(h.code);if(p){h.cur=p;n++;}
+      const tp=await fetchKrTargetPrice(h.code);if(tp){h.targetPrice=Math.round(tp);}
+    }
   }
+  const removed=runWatchlistAlgorithm();
   portfolio.lastUpdated=new Date().toISOString().slice(0,10);
   Store.set('porto',JSON.stringify(portfolio));
-  logs=['✅ '+n+'개 종목 업데이트 완료 (워치 PER·진입가 재계산됨)'];loadingPrice=false;render();
+  logs=['✅ '+n+'개 종목 업데이트 완료'+(removed.length?' · 워치리스트 자동 제외: '+removed.join(', '):'')];loadingPrice=false;render();
   setTimeout(()=>{logs=[];render();},3000);
+}
+
+// ── 워치리스트 자체 알고리즘: 목표가 상승여력 + 업종 대비 PER 저평가도로 점수화 ──
+// score>0: 매력적(상승여력·저평가) / score<0: 비매력적(목표가 도달·고평가)
+function watchlistScore(h){
+  let score=0,parts=0;
+  if(h.targetPrice>0&&h.cur>0){
+    const gapPct=(h.targetPrice-h.cur)/h.cur*100; // 목표가까지 남은 상승여력(%)
+    score+=Math.max(-60,Math.min(100,gapPct));
+    parts++;
+  }
+  if(h.eps&&h.indPer&&h.cur>0){
+    const per=h.cur/h.eps,r=per/h.indPer; // 1=업종 평균, <1 저평가
+    score+=Math.max(-50,Math.min(50,(1-r)*100));
+    parts++;
+  }
+  return parts?Math.round(score/parts*10)/10:null;
+}
+// 매 업데이트마다 재점수화 → 매력도 높은 순 정렬, 목표가 이미 달성 + 고평가로 관찰 실익이 없어진
+// 미고정(핀 안 한) 종목은 자동 제외. 📌 고정한 종목은 점수와 무관하게 항상 유지.
+function runWatchlistAlgorithm(){
+  const list=portfolio.holdings.watchlist;
+  list.forEach(h=>{h.score=watchlistScore(h);});
+  const removed=[];
+  portfolio.holdings.watchlist=list.filter(h=>{
+    if(h.pinned)return true;
+    if(h.score!=null&&h.score<=-30){removed.push(h.name);return false;}
+    return true;
+  });
+  portfolio.holdings.watchlist.sort((a,b)=>(b.score??-999)-(a.score??-999));
+  portfolio.watchlistAlgoLastRun=new Date().toISOString();
+  return removed;
+}
+
+// ── 백그라운드(WorkManager 헤드리스 WebView) 진입점 ──
+// 네이티브 PortfolioUpdateWorker가 화면 없이 이 함수만 호출한다.
+// window.HeadlessBridge가 있을 때만(=헤드리스 실행 시에만) 완료 신호를 보낸다.
+async function headlessUpdate(){
+  try{
+    await updateAllPrices();
+    if(window.HeadlessBridge&&window.HeadlessBridge.done)window.HeadlessBridge.done('ok');
+  }catch(e){
+    if(window.HeadlessBridge&&window.HeadlessBridge.done)window.HeadlessBridge.done('error:'+(e&&e.message||e));
+  }
 }
 
 // ── 종목 검색 (v3.5: 네이버 통합검색 front-api + 야후 백업) ──
@@ -1067,7 +1158,7 @@ function holdingsScreen(){
       ${cats.map(c=>`<button onclick="catH='${c.id}';render()" class="tap" style="flex:1;padding:7px 4px;border-radius:10px;background:${catH===c.id?T.teal:T.bg3};color:${catH===c.id?'#000':T.text2};font-size:12px;font-weight:${catH===c.id?700:400}">${c.l}</button>`).join('')}
     </div>
     <div class="scr" id="holdingsScroll" style="flex:1;padding:8px 16px 100px">
-      ${isWatch?`<div style="font-size:11px;color:${T.text3};padding:4px 0 8px">진입가 = 증권사 목표주가 컨센서스 × 75% (25% 할인)</div>`:''}
+      ${isWatch?`<div style="font-size:11px;color:${T.text3};padding:4px 0 8px">진입가 = 증권사 목표주가 컨센서스 × 75% (25% 할인) · 목표주가는 가격 업데이트 시 자동 조회 · 알고리즘 점수가 낮아 관찰 실익이 없어진 종목은 자동 제외됩니다(📌 고정 시 제외 안 됨)</div>`:''}
       ${items.map(h=>{
         // 개별 종목 통화 플래그 우선 (환종 선택 반영), 없으면 카테고리 기본 (채권은 항상 외화)
         const useUsd=isBond?true:(h.usd!==undefined?h.usd:isFgn);
@@ -1089,12 +1180,15 @@ function holdingsScreen(){
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
                 <span style="font-size:15px;font-weight:700;color:${T.text}">${esc(h.name)}</span>
                 ${(!isAlt)?renderTags(h.tags||[]):''}
+                ${isWatch&&h.score!=null?`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:${h.score>=15?T.green:h.score<=-15?T.red:T.text3}22;color:${h.score>=15?T.green:h.score<=-15?T.red:T.text3};font-weight:700">알고리즘 ${h.score>0?'+':''}${h.score}</span>`:''}
+                ${isWatch&&h.pinned?`<span style="font-size:11px" title="자동 제외 대상에서 제외됨">📌</span>`:''}
               </div>
               ${!isWatch?`<span class="mono" style="font-size:11px;color:${T.text3}">× ${h.qty<1?h.qty.toFixed(6):h.qty.toFixed(2)}</span>`:
               entryStatus?`<span style="font-size:11px;color:${entryColor};font-weight:700">${entryStatus}</span>`:''}
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
               ${ev!=null?`<div style="text-align:right"><div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${won(ev,true)}</div>${pnlP!=null?`<div class="mono" style="font-size:12px;color:${pctC(pnlP)}">${pct(pnlP)}</div>`:''}</div>`:`<div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${h.usd?usd(h.cur):won(h.cur)}</div>`}
+              ${isWatch?`<button onclick="togglePinWatch('${h.id}')" style="background:${h.pinned?T.amber+'33':T.bg3};color:${h.pinned?T.amber:T.text2};border:none;border-radius:8px;padding:6px 8px;font-size:12px">📌</button>`:''}
               <button onclick="showEditModal('${catH}','${h.id}')" style="background:${T.bg3};color:${T.text2};border:none;border-radius:8px;padding:6px 8px;font-size:12px">✎</button>
               <button onclick="deleteHolding('${catH}','${h.id}')" style="background:${T.red}22;color:${T.red};border:none;border-radius:8px;padding:6px 8px;font-size:12px">✕</button>
             </div>
@@ -1488,7 +1582,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v4.9</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -2081,6 +2175,13 @@ function confirmAdd(cat){
 }
 
 // ── 기타 액션 ──
+// 워치리스트 핀 고정 토글 — 고정된 종목은 자체 알고리즘의 자동 제외 대상에서 제외됨
+function togglePinWatch(id){
+  const h=portfolio.holdings.watchlist.find(x=>x.id===id);
+  if(!h)return;
+  h.pinned=!h.pinned;
+  Store.set('porto',JSON.stringify(portfolio));render();
+}
 function deleteHolding(cat,id){
   // confirm()은 일부 Android WebView에서 차단됨 → 커스텀 모달 사용
   const h=(cat==='kr'?[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs]:

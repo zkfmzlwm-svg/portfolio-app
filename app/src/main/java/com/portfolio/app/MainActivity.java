@@ -19,6 +19,12 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.json.JSONObject;
 
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+
 public class MainActivity extends Activity {
 
     private WebView webView;
@@ -263,6 +269,22 @@ public class MainActivity extends Activity {
         });
 
         webView.loadUrl("file:///android_asset/index.html");
+
+        schedulePortfolioUpdateWork();
+    }
+
+    // 워치리스트 가격·목표주가·자체 알고리즘을 6시간마다 백그라운드에서 갱신 (WorkManager periodic job).
+    // enqueueUniquePeriodicWork + KEEP: 화면 회전 등으로 onCreate가 다시 불려도 기존 예약을 유지한다.
+    private void schedulePortfolioUpdateWork() {
+        Constraints constraints = new Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build();
+        PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
+                PortfolioUpdateWorker.class, 6, TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .build();
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "portfolio_watchlist_update", ExistingPeriodicWorkPolicy.KEEP, work);
     }
 
     // 업비트 Open API 서명 요청: JWT(HS256) + (파라미터가 있으면) SHA-512 query_hash 클레임 포함
