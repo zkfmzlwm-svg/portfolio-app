@@ -799,6 +799,111 @@ function perJudge(price,eps,indPer){
   return{label:'🔴 고평가',color:T.red,per};
 }
 
+// ── 스위칭 지표 자동 수집 ──
+// 소매판매: FRED CSV(MRTSSM44X72USS, 소매+외식 SA) → 전년동월비 계산
+// ISM 가격지수: PR Newswire ISM 제조업 보고서 본문 "Prices Index registered XX.X percent" 파싱
+//              → 실패 시 TradingEconomics 요약문(최신 1개월) 폴백
+async function nativeGetText(url){
+  if(window.HttpBridge&&window.HttpBridge.get){
+    return new Promise((resolve,reject)=>{
+      const id='t'+Date.now()+Math.random().toString(36).slice(2,6);
+      window._httpCallbacks[id]={resolve:(data)=>data?resolve(data):reject(new Error('empty')),reject};
+      setTimeout(()=>{if(window._httpCallbacks[id]){delete window._httpCallbacks[id];reject(new Error('timeout'));}},15000);
+      try{window.HttpBridge.get(url,id);}
+      catch(e){delete window._httpCallbacks[id];reject(e);}
+    });
+  }
+  return fetch(url).then(r=>r.text());
+}
+const MONTHS_EN=['january','february','march','april','may','june','july','august','september','october','november','december'];
+const ymOf=(y,m)=>y+'-'+String(m).padStart(2,'0');
+// FRED CSV → {ym:val}. 줄바꿈이 사라진 응답(구버전 브릿지)도 파싱되도록 lazy 매칭
+function parseFredCsv(txt){
+  const out={},re=/(\d{4})-(\d{2})-\d{2},([\d.]+?)(?=\s|\d{4}-\d{2}-\d{2},|$)/g;let m;
+  while((m=re.exec(txt)))out[m[1]+'-'+m[2]]=parseFloat(m[3]);
+  return out;
+}
+async function fetchRetailYoY(){
+  const from=(new Date().getFullYear()-2)+'-01-01';
+  const lv=parseFredCsv(await nativeGetText('https://fred.stlouisfed.org/graph/fredgraph.csv?id=MRTSSM44X72USS&cosd='+from));
+  const out={};
+  Object.keys(lv).forEach(ym=>{
+    const prev=(+ym.slice(0,4)-1)+ym.slice(4);
+    if(lv[prev])out[ym]=Math.round((lv[ym]/lv[prev]-1)*1000)/10;
+  });
+  if(!Object.keys(out).length)throw new Error('retail empty');
+  return out;
+}
+function parseIsmPrices(html){
+  const m=String(html).replace(/<[^>]*>/g,' ').match(/Prices Index registered\s+(\d{2,3}(?:\.\d)?)\s*percent/i);
+  return m?parseFloat(m[1]):null;
+}
+async function fetchIsmPrices(wantYMs){
+  const out={};
+  try{
+    const list=await nativeGetText('https://www.prnewswire.com/news/institute-for-supply-management/');
+    const re=/href="(\/news-releases\/manufacturing-pmi[^"]*?-(january|february|march|april|may|june|july|august|september|october|november|december)-(\d{4})-[^"]*?\.html)"/gi;
+    const rel={};let m;
+    while((m=re.exec(list))){const ym=ymOf(m[3],MONTHS_EN.indexOf(m[2].toLowerCase())+1);if(!rel[ym])rel[ym]=m[1];}
+    const yms=Object.keys(rel).sort().reverse();
+    // 최신 1개월 + 비어있는 월(최대 4건)만 본문 조회
+    const targets=yms.filter((ym,i)=>i===0||wantYMs.includes(ym)).slice(0,4);
+    for(const ym of targets){
+      try{const v=parseIsmPrices(await nativeGetText('https://www.prnewswire.com'+rel[ym]));if(v!=null)out[ym]=v;}catch(e){}
+    }
+  }catch(e){}
+  if(!Object.keys(out).length){
+    // 폴백: TradingEconomics 메타 설명 "... at 71.10 points in August."
+    const html=await nativeGetText('https://tradingeconomics.com/united-states/ism-manufacturing-prices');
+    const m=html.match(/(?:at|to)\s+(\d{2,3}(?:\.\d+)?)\s+points in\s+(January|February|March|April|May|June|July|August|September|October|November|December)/i);
+    if(m){
+      const mi=MONTHS_EN.indexOf(m[2].toLowerCase())+1,now=new Date();
+      const y=mi>now.getMonth()+1?now.getFullYear()-1:now.getFullYear();
+      out[ymOf(y,mi)]=Math.round(parseFloat(m[1])*10)/10;
+    }
+  }
+  if(!Object.keys(out).length)throw new Error('ism empty');
+  return out;
+}
+// 수집값을 기존 시계열에 병합: 기존 월은 공식값으로 갱신, 이후 월은 추가 (과거 월은 늘리지 않음)
+function mergeSwitchSeries(key,vals){
+  const arr=portfolio.switching[key],first=arr.length?arr[0].ym:'0000-00';let changed=0;
+  Object.keys(vals).sort().forEach(ym=>{
+    if(ym<first)return;
+    const v=vals[ym],cur=arr.find(d=>d.ym===ym);
+    if(cur){if(cur.val!==v){cur.val=v;changed++;}}
+    else{arr.push({ym,val:v});changed++;}
+  });
+  arr.sort((a,b)=>a.ym.localeCompare(b.ym));
+  return changed;
+}
+let switchAutoBusy=false;
+async function autoFetchSwitching(silent){
+  if(switchAutoBusy)return;
+  switchAutoBusy=true;
+  const res={retail:null,ism:null};
+  if(!silent){logs=['📡 스위칭 지표 자동 수집...'];render();}
+  try{const v=await fetchRetailYoY();res.retail={n:mergeSwitchSeries('retail',v),last:Object.keys(v).sort().pop()};}catch(e){}
+  try{
+    const want=portfolio.switching.ism.filter(d=>d.val===null).map(d=>d.ym);
+    const v=await fetchIsmPrices(want);res.ism={n:mergeSwitchSeries('ism',v),last:Object.keys(v).sort().pop()};
+  }catch(e){}
+  portfolio.switchAuto={at:new Date().toISOString(),retail:res.retail?res.retail.last:(portfolio.switchAuto||{}).retail||null,ism:res.ism?res.ism.last:(portfolio.switchAuto||{}).ism||null,
+    ok:{retail:!!res.retail,ism:!!res.ism}};
+  Store.set('porto',JSON.stringify(portfolio));
+  switchAutoBusy=false;
+  const fmt=(l,r)=>r?`${l} ✓ ${r.last}${r.n?` (${r.n}건 반영)`:' (변경 없음)'}`:`${l} ✗ 수집 실패`;
+  if(!silent){
+    logs=[(res.retail||res.ism?'✅ ':'⚠️ ')+'지표 자동 수집 완료',fmt('소매판매',res.retail),fmt('ISM',res.ism)];render();
+    setTimeout(()=>{logs=[];render();},4000);
+  }else if((res.retail&&res.retail.n)||(res.ism&&res.ism.n))render();
+}
+// 앱 시작 시 12시간 경과했으면 백그라운드 자동 수집
+function maybeAutoFetchSwitching(){
+  const at=portfolio.switchAuto&&portfolio.switchAuto.at;
+  if(!at||Date.now()-new Date(at).getTime()>12*3600*1000)autoFetchSwitching(true).catch(()=>{});
+}
+
 // ── 스위칭 ──
 function calcMA3Arr(data){
   const f=data.filter(d=>d.val!==null);
@@ -1208,7 +1313,7 @@ function switchingScreen(){
     ]:[
       {l:'📋 공식 (ISM)',url:'https://www.ismworld.org/supply-management/report-on-business/manufacturing/'},
       {l:'⚡ Investing.com',url:'https://kr.investing.com/economic-calendar/ism-manufacturing-prices-398'},
-      {l:'📈 FRED',url:'https://fred.stlouisfed.org/series/ISMMPRICE'},
+      {l:'📰 ISM 보고서',url:'https://www.prnewswire.com/news/institute-for-supply-management/'},
     ];
     return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.border};margin-bottom:10px;overflow:hidden">
       <div style="padding:12px 16px;border-bottom:1px solid ${T.border};display:flex;justify-content:space-between;align-items:center">
@@ -1257,7 +1362,11 @@ function switchingScreen(){
   return `<div class="scr fade" style="padding:0 16px 24px;height:100%">
     <!-- 종합 신호 (id 있어야 부분 업데이트 가능) -->
     <div id="switchSignalBox" style="margin-bottom:10px">${renderSignalBox(sig)}</div>
-    <button onclick="showSwitchUpdateModal()" class="tap" style="width:100%;padding:11px;background:${T.bg3};color:${T.teal};border:1px solid ${T.teal}44;border-radius:10px;font-size:13px;font-weight:700;margin-bottom:14px">📊 최신 발표 지표 입력</button>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <button onclick="autoFetchSwitching(false)" class="tap" style="flex:1;padding:11px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">🔄 지표 자동 수집</button>
+      <button onclick="showSwitchUpdateModal()" class="tap" style="flex:1;padding:11px;background:${T.bg3};color:${T.teal};border:1px solid ${T.teal}44;border-radius:10px;font-size:13px;font-weight:700">📊 직접 입력</button>
+    </div>
+    <div style="font-size:10px;color:${T.text3};text-align:center;margin-bottom:14px">${portfolio.switchAuto&&portfolio.switchAuto.at?`마지막 자동 수집 ${portfolio.switchAuto.at.slice(0,16).replace('T',' ')} · 소매판매 ${portfolio.switchAuto.retail||'-'} · ISM ${portfolio.switchAuto.ism||'-'}`:'자동 수집: FRED(소매판매) · ISM 보고서(PR Newswire) — 앱 실행 시 12시간마다 자동'}</div>
     ${regimeTargetCard(sig)}
     ${styleTiltCard()}
     <!-- 전략 설명 -->
@@ -2545,6 +2654,7 @@ function render(){
 }
 
 render();
+maybeAutoFetchSwitching();
 </script>
 </body>
 </html>
