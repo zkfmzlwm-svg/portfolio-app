@@ -753,19 +753,32 @@ function classifyTags(name,sector,per,marketCap,type){
   return tags.length?tags:['성장주'];
 }
 
+// 네이버 금액 문자열 → 원 ('1,615조 345억' → 1615034500000000)
+function parseKrwAmount(v){
+  if(v==null)return null;
+  const t=String(v).replace(/,/g,'');
+  const jo=t.match(/([\d.]+)\s*조/),eok=t.match(/([\d.]+)\s*억/);
+  if(jo||eok)return(jo?parseFloat(jo[1])*1e12:0)+(eok?parseFloat(eok[1])*1e8:0);
+  const n=parseFloat(t);return isNaN(n)?null:n;
+}
+// 네이버 해외 Reuters 코드(AAPL.O/CAH.N/VOOG.K) → 야후 심볼(AAPL)
+const usSymbol=t=>String(t||'').replace(/\.(O|N|K|A|P)$/,'');
 async function fetchStockInfo(code,ticker,type){
   try{
     if(type==='kr'&&code){
-      const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic');
-      const per=parseFloat(d.per)||null;
-      const eps=parseInt((d.eps||'').replace(/,/g,''))||null;
-      const cap=d.marketValue||null;
-      const sector=d.sectorName||d.industryGroupKorName||'';
-      return{per,eps,sector,marketCap:cap,price:parseInt((d.closePrice||'').replace(/,/g,''))||null};
+      // /basic에는 현재가만 있고 PER·EPS·시총은 /integration의 totalInfos({code,key,value})에 있다
+      const [b,it]=await Promise.all([
+        nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic').catch(()=>({})),
+        nativeGet('https://m.stock.naver.com/api/stock/'+code+'/integration').catch(()=>({}))
+      ]);
+      const ti={};(it.totalInfos||[]).forEach(x=>{if(x&&x.code)ti[x.code]=x.value;});
+      const per=parseFloat(String(ti.per||'').replace(/,/g,''))||null;
+      const eps=parseInt(String(ti.eps||'').replace(/,/g,''))||null;
+      const cap=parseKrwAmount(ti.marketValue);
+      return{per,eps,sector:'',marketCap:cap,price:parseInt((b.closePrice||'').replace(/,/g,''))||null};
     } else if(type==='us'&&ticker){
-      const d=await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/'+ticker+'?interval=1d&range=1d');
-      const meta=d?.chart?.result?.[0]?.meta||{};
-      return{per:null,eps:null,sector:'',marketCap:meta.marketCap||null,price:meta.regularMarketPrice||null};
+      const price=await fetchUsPrice(ticker);
+      return{per:null,eps:null,sector:'',marketCap:null,price};
     }
   }catch(e){}
   return{};
@@ -930,7 +943,21 @@ function overallSignal(){
 
 // ── 가격 업데이트 ──
 async function fetchKrPrice(code){try{const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic');const p=parseInt((d.closePrice||'').replace(/,/g,''));return isNaN(p)?null:p;}catch(e){return null;}}
-async function fetchUsPrice(ticker){try{const d=await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/'+ticker+'?interval=1d&range=1d');return d?.chart?.result?.[0]?.meta?.regularMarketPrice||null;}catch(e){return null;}}
+async function fetchUsPrice(ticker){
+  if(!ticker)return null;
+  try{const d=await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(usSymbol(ticker))+'?interval=1d&range=1d');const p=d?.chart?.result?.[0]?.meta?.regularMarketPrice;if(p>0)return p;}catch(e){}
+  // 폴백: 네이버 해외주식 (야후 429/차단 대비)
+  for(const rc of usReutersCandidates(ticker)){
+    try{const d=await nativeGet('https://api.stock.naver.com/stock/'+encodeURIComponent(rc)+'/basic');const p=parseFloat(String(d.closePrice||'').replace(/,/g,''));if(p>0)return p;}catch(e){}
+  }
+  return null;
+}
+function usReutersCandidates(ticker,reuters){
+  const t=String(ticker||'');
+  if(reuters)return[reuters];
+  if(/\.(O|N|K|A|P)$/.test(t))return[t];
+  return[t,t+'.O',t+'.N',t+'.K'];
+}
 
 // 응답 JSON을 재귀 탐색해 name/title에 '목표주가'를 포함하는 항목의 value를 찾는다
 // (네이버 모바일 API는 통계 항목을 {name,value} 형태 배열로 내려주는 경우가 많아, 정확한 키 경로가
@@ -961,16 +988,25 @@ function findLabeledValue(node,labelRe,depth){
 async function fetchKrTargetPrice(code){
   try{
     const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/integration');
-    return findLabeledValue(d,/목표주가/);
+    // 실제 응답: consensusInfo.priceTargetMean ("489,762"). 라벨 매칭은 구조 변경 대비 폴백
+    const p=parseFloat(String(d?.consensusInfo?.priceTargetMean||'').replace(/,/g,''));
+    if(p>0)return p;
+    return findLabeledValue(d,/^목표주가$/);
   }catch(e){return null;}
 }
-// 해외: 야후 파이낸스 애널리스트 평균 목표주가(financialData.targetMeanPrice)
-async function fetchUsTargetPrice(ticker){
-  try{
-    const d=await nativeGet('https://query1.finance.yahoo.com/v10/finance/quoteSummary/'+ticker+'?modules=financialData');
-    const p=d?.quoteSummary?.result?.[0]?.financialData?.targetMeanPrice?.raw;
-    return p>0?p:null;
-  }catch(e){return null;}
+// 해외: 네이버 해외주식 컨센서스(consensusInfo.priceTargetMean, USD)
+// (야후 quoteSummary는 crumb 인증 필요 → 401로 항상 실패하므로 사용 안 함)
+async function fetchUsTargetPrice(ticker,h){
+  for(const rc of usReutersCandidates(ticker,h&&h.reuters)){
+    try{
+      const d=await nativeGet('https://api.stock.naver.com/stock/'+encodeURIComponent(rc)+'/integration');
+      if(h&&!h.reuters&&(d.consensusInfo||d.corporateOverview))h.reuters=rc; // 다음부터 바로 조회
+      const p=parseFloat(String(d?.consensusInfo?.priceTargetMean||'').replace(/,/g,''));
+      if(p>0)return p;
+      if(d&&(d.consensusInfo!==undefined||d.corporateOverview))return null; // 종목은 맞는데 컨센서스 없음
+    }catch(e){}
+  }
+  return null;
 }
 
 // ── 실시간 환율(USD/KRW) ──
@@ -1007,7 +1043,13 @@ async function fetchExRateManual(){
 
 async function updateAllPrices(){
   if(loadingPrice)return;
-  loadingPrice=true;logs=['📡 가격 업데이트 시작...'];render();
+  loadingPrice=true;
+  try{await updateAllPricesInner();}
+  catch(e){logs=['⚠ 업데이트 중 오류: '+(e&&e.message||e)];setTimeout(()=>{logs=[];render();},3000);}
+  finally{loadingPrice=false;render();}
+}
+async function updateAllPricesInner(){
+  logs=['📡 가격 업데이트 시작...'];render();
   let n=0;
   const exP=await fetchExRate();
   if(exP){portfolio.exRate=Math.round(exP*100)/100;logs=[...logs,'환율 갱신: 1 USD = '+portfolio.exRate.toLocaleString()+' KRW'];render();}
@@ -1018,14 +1060,14 @@ async function updateAllPrices(){
     logs=[...logs,'조회: '+h.ticker];render();const p=await fetchUsPrice(h.ticker);if(p){h.cur=p;n++;}
   }
   for(const h of portfolio.holdings.bonds){const p=await fetchUsPrice(h.ticker);if(p){h.cur=p;n++;}}
-  const codes=portfolio.holdings.crypto.map(h=>h.upbit).join(',');
+  const codes=portfolio.holdings.crypto.map(h=>h.upbit).filter(Boolean).join(',');
   try{const arr=await nativeGet('https://api.upbit.com/v1/ticker?markets='+codes);const m={};arr.forEach(d=>{m[d.market]=d.trade_price;});portfolio.holdings.crypto=portfolio.holdings.crypto.map(h=>({...h,cur:m[h.upbit]??h.cur}));n+=arr.length;}catch(e){}
   // 워치리스트 가격·목표주가 컨센서스 갱신 (PER·진입가는 렌더 시 현재가 기준 자동 재계산)
   logs=[...logs,'워치리스트 가격·목표주가 재계산...'];render();
   for(const h of portfolio.holdings.watchlist){
     if(h.usd&&h.ticker){
       const p=await fetchUsPrice(h.ticker);if(p){h.cur=p;n++;}
-      const tp=await fetchUsTargetPrice(h.ticker);if(tp){h.targetPrice=Math.round(tp*100)/100;}
+      const tp=await fetchUsTargetPrice(h.ticker,h);if(tp){h.targetPrice=Math.round(tp*100)/100;}
     }else if(h.code){
       const p=await fetchKrPrice(h.code);if(p){h.cur=p;n++;}
       const tp=await fetchKrTargetPrice(h.code);if(tp){h.targetPrice=Math.round(tp);}
@@ -1034,7 +1076,7 @@ async function updateAllPrices(){
   const removed=runWatchlistAlgorithm();
   portfolio.lastUpdated=new Date().toISOString().slice(0,10);
   Store.set('porto',JSON.stringify(portfolio));
-  logs=['✅ '+n+'개 종목 업데이트 완료'+(removed.length?' · 워치리스트 자동 제외: '+removed.join(', '):'')];loadingPrice=false;render();
+  logs=['✅ '+n+'개 종목 업데이트 완료'+(removed.length?' · 워치리스트 자동 제외: '+removed.join(', '):'')];
   setTimeout(()=>{logs=[];render();},3000);
 }
 
@@ -1083,7 +1125,7 @@ let searchResults=[],searchTimer;
 async function searchNaver(q){
   // 엔드포인트 1: front-api autoComplete
   const endpoints=[
-    'https://m.stock.naver.com/front-api/search/autoComplete?query='+encodeURIComponent(q)+'&target=stock,index,etf',
+    'https://m.stock.naver.com/front-api/search/autoComplete?query='+encodeURIComponent(q)+'&target=stock,index',
     'https://ac.stock.naver.com/ac?q='+encodeURIComponent(q)+'&target=stock,index,etf&where=stock',
   ];
   for(const url of endpoints){
@@ -1095,7 +1137,6 @@ async function searchNaver(q){
       else if(d&&d.items)items=d.items;
       else if(d&&Array.isArray(d.result))items=d.result;
       else if(Array.isArray(d))items=d;
-      else if(d&&d.result&&Array.isArray(d.result))items=d.result;
       if(!items.length)continue;
       const mapped=items.map(it=>{
         const code=it.code||it.symbolCode||it.cd||'';
@@ -1105,7 +1146,8 @@ async function searchNaver(q){
         const isKr=(/^\d{6}$/.test(code))||nation==='KOR'||/KOSPI|KOSDAQ|KONEX|코스피|코스닥/.test(typeName);
         return{
           code:code,
-          ticker:isKr?null:(it.reutersCode||it.symbolCode||code),
+          ticker:isKr?null:(it.symbolCode||usSymbol(code)),
+          reuters:isKr?null:(it.reutersCode||null),
           name:nm,
           market:typeName||(isKr?'KRX':'US'),
           type:isKr?'kr':'us'
@@ -1262,14 +1304,15 @@ function holdingsScreen(){
         // 개별 종목 통화 플래그 우선 (환종 선택 반영), 없으면 카테고리 기본 (채권은 항상 외화)
         const useUsd=isBond?true:(h.usd!==undefined?h.usd:isFgn);
         const curP=h.cur,avgP=h.avg;
-        const ev=useUsd?h.qty*h.cur*EX:isWatch?null:h.qty*curP;
-        const cost2=useUsd?h.qty*h.avg*EX:isWatch?null:h.qty*avgP;
+        const ev=isWatch?null:useUsd?h.qty*h.cur*EX:h.qty*curP;
+        const cost2=isWatch?null:useUsd?h.qty*h.avg*EX:h.qty*avgP;
+        const fmtP=v=>useUsd?usd(v):won(v); // 워치리스트 가격 표기 (해외는 USD)
         const pnl2=ev!=null?ev-cost2:null,pnlP=cost2>0?pnl2/cost2*100:null;
         const judge=h.eps&&h.indPer?perJudge(h.cur,h.eps,h.indPer):null;
         const isCrypto=!!h.upbit;
         const kind=isWatch?'watch':catH==='kr'?'kr':catH==='us'?'us':catH==='bonds'?'bonds':isCrypto?'crypto':'gold';
         // 워치리스트 진입시점 계산
-        const entryPrice=h.targetPrice?Math.round(h.targetPrice*0.75):null;
+        const entryPrice=h.targetPrice?(useUsd?Math.round(h.targetPrice*75)/100:Math.round(h.targetPrice*0.75)):null;
         const entryGap=entryPrice?((h.cur-entryPrice)/entryPrice*100):null;
         const entryStatus=entryPrice?(h.cur<=entryPrice?'🟢 진입구간':entryGap<=10?'🟡 근접':'⚪ 대기'):null;
         const entryColor=entryPrice?(h.cur<=entryPrice?T.green:entryGap<=10?T.amber:T.text3):T.text3;
@@ -1294,9 +1337,9 @@ function holdingsScreen(){
           </div>
           ${isWatch&&h.targetPrice?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px">
             ${[
-              ['현재가',won(h.cur),T.text],
-              ['목표주가',won(h.targetPrice),T.blue],
-              ['진입가(×75%)',entryPrice?won(entryPrice):'—',entryColor],
+              ['현재가',fmtP(h.cur),T.text],
+              ['목표주가',fmtP(h.targetPrice),T.blue],
+              ['진입가(×75%)',entryPrice?fmtP(entryPrice):'—',entryColor],
             ].map(([k,v,c])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 8px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${c};font-weight:700">${v}</div></div>`).join('')}
           </div>`:''}
           ${isWatch?`<button onclick="transferToHolding('${h.id}')" class="tap" style="width:100%;padding:10px;background:${T.teal}22;color:${T.teal};border:1px solid ${T.teal}44;border-radius:10px;font-size:13px;font-weight:700;margin-top:4px">
@@ -1998,7 +2041,7 @@ function showEditModal(cat,id){
       ${!isWatch?`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">수량</div><input type="number" id="eQty" value="${h.qty}" step="0.00000001"></div>
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">매수평균가 <span id="avgUnit">${curCurrency==='USD'?'(USD)':'(KRW)'}</span></div><input type="number" id="eAvg" value="${h.avg}" step="any"></div>`:''}
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">현재가 <span id="curUnit">${curCurrency==='USD'?'(USD)':'(KRW)'}</span></div><input type="number" id="eCur" value="${h.cur}" step="any"></div>
-      ${isWatch?`<div><div style="font-size:12px;color:${T.teal};margin-bottom:5px">📊 증권사 목표주가 컨센서스 (KRW)</div><input type="number" id="eTargetPrice" value="${h.targetPrice||''}" placeholder="예: 530000"><div style="font-size:10px;color:${T.text3};margin-top:3px">진입가 = 이 값 × 75%</div></div>`:''}
+      ${isWatch?`<div><div style="font-size:12px;color:${T.teal};margin-bottom:5px">📊 증권사 목표주가 컨센서스 (${h.usd?'USD':'KRW'})</div><input type="number" id="eTargetPrice" value="${h.targetPrice||''}" placeholder="예: 530000"><div style="font-size:10px;color:${T.text3};margin-top:3px">진입가 = 이 값 × 75%</div></div>`:''}
       ${!isWatch&&!isBond?`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">EPS (선택)</div><input type="number" id="eEps" value="${h.eps||''}" step="any"></div>
       <div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">업종 기준 PER (선택)</div><input type="number" id="eIndPer" value="${h.indPer||''}" step="any"></div>`:''}
     </div>
@@ -2265,14 +2308,14 @@ function confirmAdd(cat){
   if(cat==='kr'){
     portfolio.holdings.kr_stocks.push({id,name:r.name,code:r.code,qty,avg,cur,tags,eps:info.eps||null,indPer:null,usd:isUsd});
   }else if(cat==='us'){
-    portfolio.holdings.us.push({id,name:r.name,ticker:r.ticker||r.code,qty,avg,cur,tags,usd:isUsd});
+    portfolio.holdings.us.push({id,name:r.name,ticker:r.ticker||r.code,reuters:r.reuters||null,qty,avg,cur,tags,usd:isUsd});
   }else if(cat==='bonds'){
-    portfolio.holdings.bonds.push({id,name:r.name,ticker:r.ticker||r.code,qty,avg,cur,tags:['가치주'],usd:isUsd});
+    portfolio.holdings.bonds.push({id,name:r.name,ticker:r.ticker||r.code,reuters:r.reuters||null,qty,avg,cur,tags:['가치주'],usd:isUsd});
   }else if(cat==='alts'){
     if(r.type==='crypto')portfolio.holdings.crypto.push({id,name:r.name.split('(')[0].trim(),upbit:r.code,qty,avg,cur:info.price||0});
     else portfolio.holdings.gold.push({id,name:r.name,code:r.code,qty,avg,cur,usd:isUsd});
   }else if(cat==='watch'){
-    portfolio.holdings.watchlist.push({id,name:r.name,code:r.code,ticker:r.ticker,cur:info.price||0,tags,usd:r.type==='us',eps:info.eps||null});
+    portfolio.holdings.watchlist.push({id,name:r.name,code:r.code,ticker:r.ticker,reuters:r.reuters||null,cur:info.price||0,tags,usd:r.type==='us',eps:info.eps||null});
   }
   Store.set('porto',JSON.stringify(portfolio));closeModal();render();
 }
@@ -2338,7 +2381,7 @@ function addSwitchMonth(key){
   Store.set('porto',JSON.stringify(portfolio));render();
 }
 function removeSwitchMonth(key){if(portfolio.switching[key].length>4)portfolio.switching[key].pop();Store.set('porto',JSON.stringify(portfolio));render();}
-async function fetchUpbit(){try{const codes=portfolio.holdings.crypto.map(h=>h.upbit).join(',');const arr=await nativeGet('https://api.upbit.com/v1/ticker?markets='+codes);const m={};arr.forEach(d=>{m[d.market]=d.trade_price;});portfolio.holdings.crypto=portfolio.holdings.crypto.map(h=>({...h,cur:m[h.upbit]??h.cur}));Store.set('porto',JSON.stringify(portfolio));alert('✅ 업비트 업데이트 완료');render();}catch(e){alert('실패: '+e.message);}}
+async function fetchUpbit(){try{const codes=portfolio.holdings.crypto.map(h=>h.upbit).filter(Boolean).join(',');const arr=await nativeGet('https://api.upbit.com/v1/ticker?markets='+codes);const m={};arr.forEach(d=>{m[d.market]=d.trade_price;});portfolio.holdings.crypto=portfolio.holdings.crypto.map(h=>({...h,cur:m[h.upbit]??h.cur}));Store.set('porto',JSON.stringify(portfolio));alert('✅ 업비트 업데이트 완료');render();}catch(e){alert('실패: '+e.message);}}
 
 function saveUpbitKeys(){
   const ak=document.getElementById('ubAccess').value.trim();
