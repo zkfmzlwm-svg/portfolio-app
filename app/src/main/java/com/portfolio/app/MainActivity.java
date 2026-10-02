@@ -262,6 +262,13 @@ public class MainActivity extends Activity {
                 }
                 return false;
             }
+
+            // 앱을 열 때(=페이지 로드 완료 시)마다 워치리스트 가격·목표주가·자체 알고리즘을 자동 갱신
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                view.evaluateJavascript("autoUpdateOnLaunch();", null);
+            }
         });
 
         webView.loadUrl("file:///android_asset/index.html");
