@@ -70,8 +70,10 @@ public class MainActivity extends Activity {
                     try {
                         URL u = new URL(url);
                         conn = (HttpURLConnection) u.openConnection();
-                        conn.setRequestProperty("User-Agent",
-                            "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/108.0.0.0");
+                        // FRED(Akamai)는 브라우저 UA의 비브라우저 요청을 차단 → Dalvik UA 사용
+                        conn.setRequestProperty("User-Agent", url.contains("stlouisfed.org")
+                            ? "Dalvik/2.1.0 (Linux; U; Android 12)"
+                            : "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/108.0.0.0");
                         conn.setRequestProperty("Accept", "application/json, text/plain, */*");
                         // 네이버 API는 Referer 헤더 요구
                         if (url.contains("naver.com")) {
@@ -84,7 +86,7 @@ public class MainActivity extends Activity {
                         BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
                         StringBuilder sb = new StringBuilder();
                         String line;
-                        while ((line = br.readLine()) != null) sb.append(line);
+                        while ((line = br.readLine()) != null) sb.append(line).append('\n'); // 줄바꿈 보존 (CSV 파싱용)
                         br.close();
 
                         httpResults.put(callbackId, sb.toString());
