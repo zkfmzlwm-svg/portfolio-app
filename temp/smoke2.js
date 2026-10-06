@@ -46,7 +46,7 @@ run("portfolio.switching.ism=[{ym:'2026-01',val:50},{ym:'2026-02',val:60},{ym:'2
 ok(run('overallSignal().s')==='bull','bull 강제 성공: '+run('overallSignal().s'));
 run('applyRegimeTargets()');
 ok(run('portfolio.targets.bonds')===12,'강세 프리셋 채권 12%');
-ok(run('portfolio.targets.crypto')===18,'강세 프리셋 코인 18%');
+ok(run('portfolio.targets.us')===33&&run('portfolio.targets.bonds')===12,'강세 프리셋 해외33·채권12%');
 p=run('newMoneyPlan(2000000)');
 sum=p.allocs.reduce((s,a)=>s+a.amt,0);
 ok(Math.abs(sum-2000000)<2,'강세 프리셋에서도 월 200만 전액 배분: '+sum);

@@ -693,10 +693,13 @@ function applyTrade(h,cat,side,qty,price,fee,date){
 function realizedPnl(){return portfolio.txns.filter(t=>t.side==='sell').reduce((s,t)=>s+(t.realizedKRW||0),0);}
 
 // ── 스위칭 regime → 자산군 목표비중 프리셋 ──
+// 근거: 2002-09~2026-09 월간 KRW 수익률 국면별 분석 + 워크포워드 백테스트 (analysis/regime_weights/)
+// 주식·코인은 국면별 수익률 차이 유의성 없음(p≈0.8~0.9) → 중립 유지. 강세(물가압력↑)에서 채권 약세(-2.6%/년),
+// 약세에서 금 강세(+24%/년)가 두 하위기간 모두 같은 방향 → 채권·금만 조정.
 const REGIME_TARGETS={
-  bull:{kr:27,us:30,bonds:12,gold:13,crypto:18,label:'공격형',desc:'경기 강세 — 주식(수출·가치·대형 중심)·코인 비중 ↑, 채권 ↓'},
+  bull:{kr:25,us:33,bonds:12,gold:20,crypto:10,label:'공격형',desc:'경기 강세(물가압력↑) — 채권 ↓ 8%p → 해외주식 ↑'},
   neutral:{kr:25,us:25,bonds:20,gold:20,crypto:10,label:'중립형',desc:'신호 형성·혼조·데이터 부족 — 기본 목표 비중 유지'},
-  bear:{kr:18,us:17,bonds:30,gold:27,crypto:8,label:'방어형',desc:'경기 약세 — 채권·금(방어자산) 비중 ↑, 주식·코인 ↓'}
+  bear:{kr:20,us:20,bonds:20,gold:30,crypto:10,label:'방어형',desc:'경기 약세 — 주식 ↓ 10%p → 금 ↑'}
 };
 function regimeKey(sig){sig=sig||overallSignal();return sig.s==='bull'?'bull':sig.s==='bear'?'bear':'neutral';}
 
