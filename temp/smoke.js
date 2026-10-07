@@ -39,12 +39,9 @@ ok(Math.abs(sumAlloc-2000000)<2,`월 200만 전량 배분 (${sumAlloc})`);
 ok(plan.months>0,'달성 개월수: '+plan.months);
 ok(plan.Xstar>=c.total,'Xstar>=현재총액');
 
-// 목표 프리셋 합계 100
-for(const k of['bull','neutral','bear']){
-  const p=run('REGIME_TARGETS.'+k);
-  const s=p.kr+p.us+p.bonds+p.gold+p.crypto;
-  ok(s===100,'프리셋 '+k+' 합=100 ('+s+')');
-}
+// 고정 목표비중 합계 100 + 초기 로드 시 적용
+{const p=run('FIXED_TARGETS');const s=p.kr+p.us+p.bonds+p.gold+p.crypto;ok(s===100,'고정비중 합=100 ('+s+')');
+ ok(run('portfolio.fixedTargetsV1')===true,'고정비중 1회 전환 플래그');}
 
 // 4. 거래 반영
 run("portfolio.txns=[]");

@@ -184,10 +184,17 @@ function kiwoomCall(method,...args){
 const kiwoomTestConnection=mock=>kiwoomCall('testConnection',mock);
 const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrder',mock,side,stkCd,trdeTp,String(qty),String(price));
 
+// ── 고정 목표비중 (국면 무관) ──
+// 근거: 2003-01~2026-09 월간 KRW 백테스트 (analysis/regime_weights/static.py·robust.py·candidates.py)
+// 과거 수익률 최적화는 기간마다 크게 흔들림(워크포워드 OOS Sharpe 0.83) → 방법 간 공통 결과(채권↓·금↑·코인 5~20%)만 반영.
+// 전체기간 Sharpe 1.08 / MDD −13.2% (기존 25/25/20/20/10: 1.04 / −15.2%). 분기 리밸런싱 + 월 적립금 부족분 배분 권장.
+const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:30,crypto:10};
+const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 30 · 코인 10%';
+
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
-  targets:{kr:25,us:25,bonds:20,gold:20,crypto:10},
+  targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},
   holdings:{
     kr_stocks:[
       {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['성장주','소형주'],eps:1782,indPer:50},
@@ -612,7 +619,9 @@ if(!portfolio.switching||!portfolio.switching.retail)
   portfolio.switching=JSON.parse(JSON.stringify(INIT.switching));
 if(!portfolio.holdings.watchlist)portfolio.holdings.watchlist=[];
 if(!Array.isArray(portfolio.txns))portfolio.txns=[];
-if(!portfolio.targets)portfolio.targets={kr:25,us:25,bonds:20,gold:20,crypto:10};
+if(!portfolio.targets)portfolio.targets=Object.assign({},FIXED_TARGETS);
+// 고정 비중 운영 전환(1회): 기존 저장 목표비중을 백테스트 기반 고정 비중으로 교체
+if(!portfolio.fixedTargetsV1){portfolio.targets=Object.assign({},FIXED_TARGETS);portfolio.fixedTargetsV1=true;Store.set('porto',JSON.stringify(portfolio));}
 ['kr','us','bonds','gold','crypto'].forEach(k=>{if(portfolio.targets[k]==null)portfolio.targets[k]=0;});
 let tab='home',catH='kr',filterP='all',monthly=200,loadingPrice=false,logs=[];
 let touchStartX=0,touchStartY=0;
@@ -692,15 +701,6 @@ function applyTrade(h,cat,side,qty,price,fee,date){
 }
 function realizedPnl(){return portfolio.txns.filter(t=>t.side==='sell').reduce((s,t)=>s+(t.realizedKRW||0),0);}
 
-// ── 스위칭 regime → 자산군 목표비중 프리셋 ──
-// 근거: 2002-09~2026-09 월간 KRW 수익률 국면별 분석 + 워크포워드 백테스트 (analysis/regime_weights/)
-// 주식·코인은 국면별 수익률 차이 유의성 없음(p≈0.8~0.9) → 중립 유지. 강세(물가압력↑)에서 채권 약세(-2.6%/년),
-// 약세에서 금 강세(+24%/년)가 두 하위기간 모두 같은 방향 → 채권·금만 조정.
-const REGIME_TARGETS={
-  bull:{kr:25,us:33,bonds:12,gold:20,crypto:10,label:'공격형',desc:'경기 강세(물가압력↑) — 채권 ↓ 8%p → 해외주식 ↑'},
-  neutral:{kr:25,us:25,bonds:20,gold:20,crypto:10,label:'중립형',desc:'신호 형성·혼조·데이터 부족 — 기본 목표 비중 유지'},
-  bear:{kr:20,us:20,bonds:20,gold:30,crypto:10,label:'방어형',desc:'경기 약세 — 주식 ↓ 10%p → 금 ↑'}
-};
 function regimeKey(sig){sig=sig||overallSignal();return sig.s==='bull'?'bull':sig.s==='bear'?'bear':'neutral';}
 
 // ── 리밸런싱 계산 ──
@@ -1367,36 +1367,19 @@ function holdingsScreen(){
   </div>`;
 }
 
-// ── 신호 기반 자산 배분 제안 카드 ──
-function regimeTargetCard(sig){
-  const k=regimeKey(sig),preset=REGIME_TARGETS[k],t=portfolio.targets;
+// ── 고정 목표비중 카드 (스위칭 신호는 참고용) ──
+function fixedTargetCard(){
+  const t=portfolio.targets;
   const rows=[['kr','국내주식',T.teal],['us','해외주식',T.blue],['bonds','채권',T.green],['gold','금·광물',T.amber],['crypto','코인',T.purple]];
-  const same=rows.every(([key])=>(t[key]||0)===preset[key]);
-  return `<div style="background:${T.card};border-radius:14px;border:1px solid ${sig.color}44;margin-bottom:14px;overflow:hidden">
-    <div style="padding:12px 16px;border-bottom:1px solid ${T.border};display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 신호 권장 목표 비중 — ${preset.label}</div>
-        <div style="font-size:11px;color:${T.text3};margin-top:2px">${preset.desc}</div>
-      </div>
-    </div>
-    <div style="padding:10px 16px">
-      ${rows.map(([key,nm,c])=>{const cur=t[key]||0,rec=preset[key],diff=rec-cur;
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
-          <div style="width:8px;height:8px;border-radius:2px;background:${c};flex-shrink:0"></div>
-          <span style="font-size:12px;color:${T.text2};width:74px;flex-shrink:0">${nm}</span>
-          <div style="flex:1;height:5px;background:${T.border};border-radius:3px;position:relative"><div style="position:absolute;left:0;top:0;height:100%;width:${Math.min(100,cur)}%;background:${c};border-radius:3px;opacity:.55"></div><div style="position:absolute;left:${Math.min(100,rec)}%;top:-2px;height:9px;width:2px;background:#fff"></div></div>
-          <span class="mono" style="font-size:11px;color:${T.text2};width:42px;text-align:right">현 ${cur}%</span>
-          <span class="mono" style="font-size:11px;color:${diff===0?T.green:diff>0?T.blue:T.red};width:52px;text-align:right;font-weight:700">${diff===0?'✓':(diff>0?'＋':'−')+Math.abs(diff)+'pct'}</span>
-        </div>`;}).join('')}
-      <div style="font-size:10px;color:${T.text3};margin:4px 0 10px">▍반투명 막대=현재 비중, 권장값은 리밸런싱 탭에서 숫자로 확인하세요</div>
-      <button onclick="applyRegimeTargets()" class="tap" ${same?'disabled':''} style="width:100%;padding:11px;background:${same?T.bg3:sig.color};color:${same?T.text3:'#000'};border-radius:10px;font-size:13px;font-weight:700">${same?'✓ 현재 목표비중이 권장 구성과 동일':'권장 목표비중 적용하고 리밸런싱으로 이동'}</button>
-    </div>
+  const same=rows.every(([key])=>(t[key]||0)===FIXED_TARGETS[key]);
+  return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.teal}44;margin-bottom:14px;padding:12px 16px">
+    <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 고정 목표 비중 운영</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 분기 리밸런싱<br>백테스트상 신호별 비중 변경은 고정 비중 대비 우위가 없어, 위 신호는 참고용입니다.</div>
+    ${same?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:10px;width:100%;padding:10px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">고정 비중으로 복원하고 리밸런싱으로 이동</button>`}
   </div>`;
 }
-function applyRegimeTargets(){
-  const k=regimeKey(overallSignal());
-  portfolio.targets=Object.assign({},REGIME_TARGETS[k]);
-  delete portfolio.targets.label;delete portfolio.targets.desc;
+function applyFixedTargets(){
+  portfolio.targets=Object.assign({},FIXED_TARGETS);
   save();tab='rebal';render();
 }
 
@@ -1501,7 +1484,7 @@ function switchingScreen(){
       <button onclick="showSwitchUpdateModal()" class="tap" style="flex:1;padding:11px;background:${T.bg3};color:${T.teal};border:1px solid ${T.teal}44;border-radius:10px;font-size:13px;font-weight:700">📊 직접 입력</button>
     </div>
     <div style="font-size:10px;color:${T.text3};text-align:center;margin-bottom:14px">${portfolio.switchAuto&&portfolio.switchAuto.at?`마지막 자동 수집 ${portfolio.switchAuto.at.slice(0,16).replace('T',' ')} · 소매판매 ${portfolio.switchAuto.retail||'-'} · ISM ${portfolio.switchAuto.ism||'-'}`:'자동 수집: FRED(소매판매) · ISM 보고서(PR Newswire) — 앱 실행 시 12시간마다 자동'}</div>
-    ${regimeTargetCard(sig)}
+    ${fixedTargetCard()}
     ${styleTiltCard()}
     <!-- 전략 설명 -->
     <div style="background:${T.card};border-radius:14px;padding:12px 16px;border:1px solid ${T.border};margin-bottom:14px">
@@ -1520,7 +1503,6 @@ function switchingScreen(){
 
 // ── 화면: 리밸런싱 ──
 function rebalScreen(){
-  const sig=overallSignal(),rk=regimeKey(sig),preset=REGIME_TARGETS[rk];
   const plan=newMoneyPlan(monthly*10000),rows=rebalRows();
   const slPct=((monthly-50)/450*100).toFixed(0);
   const tgtSum=rows.reduce((s,r)=>s+(r.tgt||0),0);
@@ -1550,9 +1532,9 @@ function rebalScreen(){
     </div>
 
     ${secL('목표 비중 설정')}
-    <div style="background:${sig.color}0F;border:1px solid ${sig.color}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
-      현재 신호 <b style="color:${sig.color}">${sig.label}</b> · 권장(${preset.label}): 국내 ${preset.kr} · 해외 ${preset.us} · 채권 ${preset.bonds} · 금 ${preset.gold} · 코인 ${preset.crypto}%
-      <button onclick="applyRegimeTargets()" class="tap" style="margin-top:8px;width:100%;padding:8px;background:${sig.color};color:#000;border-radius:8px;font-weight:700;font-size:12px">권장 목표비중 적용</button>
+    <div style="background:${T.teal}0F;border:1px solid ${T.teal}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
+      고정 비중: ${FIXED_LABEL} · <b>분기 1회 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)
+      <button onclick="applyFixedTargets()" class="tap" style="margin-top:8px;width:100%;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">고정 비중으로 복원</button>
     </div>
     ${card(`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px">
       ${rows.map((r,i)=>`<div style="text-align:center"><div style="font-size:10px;color:${r.color};font-weight:700;margin-bottom:3px;height:24px;line-height:12px">${r.name.replace(/^[^\u3131-\uD79D]+/,'')}</div><input type="number" id="tIn${i}" value="${r.tgt}" min="0" max="100" step="1" style="padding:7px 2px;text-align:center;font-size:13px"></div>`).join('')}

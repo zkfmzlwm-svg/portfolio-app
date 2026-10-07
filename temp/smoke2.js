@@ -38,18 +38,15 @@ let sum=p.allocs.reduce((s,a)=>s+a.amt,0);
 ok(Math.abs(sum)<1,'목표 0이면 배분 0');
 run('portfolio.targets={kr:25,us:25,bonds:20,gold:20,crypto:10}');
 
-// regime 프리셋 적용
-run('applyRegimeTargets && (overallSignal())');
-// bull 강제
+// 고정 비중 복원 (신호와 무관)
 run("portfolio.switching.retail=[{ym:'2026-01',val:1},{ym:'2026-02',val:2},{ym:'2026-03',val:3},{ym:'2026-04',val:4},{ym:'2026-05',val:5}];");
 run("portfolio.switching.ism=[{ym:'2026-01',val:50},{ym:'2026-02',val:60},{ym:'2026-03',val:70},{ym:'2026-04',val:80},{ym:'2026-05',val:90}];");
 ok(run('overallSignal().s')==='bull','bull 강제 성공: '+run('overallSignal().s'));
-run('applyRegimeTargets()');
-ok(run('portfolio.targets.bonds')===12,'강세 프리셋 채권 12%');
-ok(run('portfolio.targets.us')===33&&run('portfolio.targets.bonds')===12,'강세 프리셋 해외33·채권12%');
+run('applyFixedTargets()');
+ok(run('portfolio.targets.us')===30&&run('portfolio.targets.bonds')===10&&run('portfolio.targets.gold')===30,'강세 신호에서도 고정비중 20/30/10/30/10');
 p=run('newMoneyPlan(2000000)');
 sum=p.allocs.reduce((s,a)=>s+a.amt,0);
-ok(Math.abs(sum-2000000)<2,'강세 프리셋에서도 월 200만 전액 배분: '+sum);
+ok(Math.abs(sum-2000000)<2,'고정비중에서 월 200만 전액 배분: '+sum);
 console.log(p.allocs.map(a=>a.name+' '+(a.amt/10000).toFixed(1)+'만').join(', '));
 
 // 매수 후 평단 검증: s4 현재 q9.058985 avg295790, 1주 260000 매수
