@@ -1,7 +1,7 @@
 import json, sys, os
 import pandas as pd, numpy as np
 
-D = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), 'data')
+D = os.environ.get('DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
 
 def yahoo(name):
     j = json.load(open(os.path.join(D, f'y_{name}.json')))['chart']['result'][0]
