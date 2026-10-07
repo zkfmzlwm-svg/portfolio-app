@@ -37,7 +37,13 @@ const T={bg:'#04080F',bg2:'#0A1220',bg3:'#0C1524',card:'#0F1C2E',border:'#172033
   amber:'#FFB020',purple:'#A78BFA',text:'#ECF1FF',text2:'#697FA0',text3:'#3D4F68'};
 
 const TAG_COLOR={'수출주':'#00BFA6','내수주':'#22D07A','성장주':'#4E8EFF',
-  '가치주':'#FFB020','대형주':'#697FA0','소형주':'#A78BFA','헤지':'#FF4D67'};
+  '가치주':'#FFB020','대형주':'#697FA0','소형주':'#A78BFA','헤지':'#FF4D67','지수':'#8A94A6'};
+// 시장 전체 지수 추종(가치·성장 혼합) — 스타일 진단에서 가치/성장 양쪽에 50:50으로 집계
+const INDEX_TICKERS=new Set(['SPY','VOO','IVV','SPLG','VTI','ITOT','SCHB','SCHX','RSP','UPRO','SSO','SPXL']);
+function isIndexFund(name,ticker){
+  const t=String(ticker||'').toUpperCase(),n=String(name||'').toLowerCase();
+  return INDEX_TICKERS.has(t)||/s&p\s?500|sp500|total (stock )?market|kospi\s?200|코스피\s?200|^kodex 200$|^tiger 200$/.test(n);
+}
 
 // ── 스토리지 ──
 const Store={
@@ -215,9 +221,9 @@ const INIT={
       {id:'u2',name:'CAH',ticker:'CAH',qty:1.405932,avg:206.24,cur:235.13,tags:['가치주','대형주'],eps:10.31,indPer:17},
       {id:'u3',name:'COR',ticker:'COR',qty:0.942753,avg:298.2596,cur:321.23,tags:['가치주','대형주']},
       {id:'u4',name:'MCK',ticker:'MCK',qty:0.335704,avg:823.1436,cur:890.51,tags:['가치주','대형주']},
-      {id:'u5',name:'UPRO',ticker:'UPRO',qty:0.791132,avg:144.4264,cur:152.91,tags:['성장주','대형주']},
-      {id:'ue1',name:'SPY',ticker:'SPY',qty:1.572030,avg:700.5,cur:771.10,tags:['가치주','대형주']},
-      {id:'ue2',name:'VOO',ticker:'VOO',qty:1.022246,avg:674.9566,cur:708.75,tags:['가치주','대형주']},
+      {id:'u5',name:'UPRO',ticker:'UPRO',qty:0.791132,avg:144.4264,cur:152.91,tags:['지수','대형주']},
+      {id:'ue1',name:'SPY',ticker:'SPY',qty:1.572030,avg:700.5,cur:771.10,tags:['지수','대형주']},
+      {id:'ue2',name:'VOO',ticker:'VOO',qty:1.022246,avg:674.9566,cur:708.75,tags:['지수','대형주']},
       {id:'ue3',name:'JEPQ',ticker:'JEPQ',qty:9.506051,avg:59.44,cur:60.31,tags:['성장주','대형주']},
     ],
     bonds:[
@@ -306,8 +312,9 @@ const TAG_MAP={
   'u3':['가치주','대형주'],          // COR (의약품유통 가치 대형)
   'u4':['가치주','대형주'],          // MCK (의약품유통 가치 대형)
   // 해외 ETF
-  'ue1':['가치주','대형주'],         // SPY (S&P500)
-  'ue2':['가치주','대형주'],         // VOO (S&P500)
+  'u5':['지수','대형주'],           // UPRO (S&P500 3배 — 지수 추종, 가치·성장 혼합)
+  'ue1':['지수','대형주'],           // SPY (S&P500 — 가치·성장 혼합)
+  'ue2':['지수','대형주'],           // VOO (S&P500 — 가치·성장 혼합)
   'ue3':['성장주','대형주'],         // JEPQ (NASDAQ 커버드콜)
   // 채권
   'b1':['가치주'],                  // BND (종합채권)
@@ -319,6 +326,7 @@ const TAG_MAP={
 function autoTagByName(name,isUs){
   const n=(name||'').toLowerCase();
   if(['인버스','곱버스','inverse','short'].some(k=>n.includes(k)))return['헤지'];
+  if(isIndexFund(name,name))return['지수','대형주'];
   const tags=[];
   if(['반도체','전자','디스플레이','자동차','조선','화학','배터리','이차전지','ai전','smr','원자력','전력인프라','방산','chip','semiconductor'].some(k=>n.includes(k)))tags.push('수출주');
   if(['은행','금융','통신','유통','소매','음식','식품','건설','부동산','헬스케어','엔터','미디어','k엔터'].some(k=>n.includes(k)))tags.push('내수주');
@@ -331,7 +339,7 @@ function autoTagByName(name,isUs){
   return tags.length?tags:['성장주'];
 }
 
-const VALID6=new Set(['수출주','내수주','성장주','가치주','대형주','소형주','헤지']);
+const VALID6=new Set(['수출주','내수주','성장주','가치주','대형주','소형주','헤지','지수']);
 
 function updateToV32(p){
   // 2026-06-12 사진 기준 (구버전 호환용, v3.7+에서는 updateToV37이 덮어씀)
@@ -550,7 +558,7 @@ function updateToV42(p){
   all.forEach(h=>{if(U[h.id])Object.assign(h,U[h.id]);});
   // 신규: UPRO (S&P500 3배 레버리지)
   if(!p.holdings.us.find(h=>h.id==='u5')){
-    p.holdings.us.push({id:'u5',name:'UPRO',ticker:'UPRO',qty:0.449477,avg:138.6048,cur:142.82,tags:['성장주','대형주']});
+    p.holdings.us.push({id:'u5',name:'UPRO',ticker:'UPRO',qty:0.449477,avg:138.6048,cur:142.82,tags:['지수','대형주']});
   }
   // 스위칭 지표 최신값 (6월 ISM 73.0, 소매판매 6.7% 포함)
   p.switching=JSON.parse(JSON.stringify(INIT.switching));
@@ -572,6 +580,10 @@ function migratePortfolio(p){
     // 태그 없거나 6분류 아닌 값만 있으면 자동 분류
     else if(!h.tags||!h.tags.length||!h.tags.some(t=>VALID6.has(t))){
       h.tags=autoTagByName(h.name,!!(h.ticker&&!h.code));
+    }
+    // 지수 추종 ETF는 가치/성장 단정 태그 제거 → '지수'(혼합)로 교정
+    if(isIndexFund(h.name,h.ticker)&&!(h.tags||[]).includes('헤지')){
+      h.tags=['지수','대형주'];
     }
   }));
   // 버전 숫자 비교 (문자열 '4.10'<'4.9' 버그 방지)
@@ -640,7 +652,7 @@ const btn=(l,fn,c,ex='')=>`<button onclick="${fn}" class="tap" style="width:100%
 function renderTags(tags){
   if(!tags||!tags.length)return'';
   const label=tags.join('·');
-  const pri=['헤지','성장주','수출주','내수주','소형주','가치주','대형주'];
+  const pri=['헤지','지수','성장주','수출주','내수주','소형주','가치주','대형주'];
   const main=pri.find(t=>tags.includes(t))||tags[0];
   const c=TAG_COLOR[main]||T.text3;
   return `<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:${c}22;color:${c};font-weight:700;white-space:nowrap">${esc(label)}</span>`;
@@ -735,7 +747,8 @@ function newMoneyPlan(monthlyWon){
 }
 
 // ── 분류 자동 판정 ──
-function classifyTags(name,sector,per,marketCap,type){
+function classifyTags(name,sector,per,marketCap,type,ticker){
+  if(isIndexFund(name,ticker))return['지수','대형주'];
   const tags=[];
   const nm=(name||'').toLowerCase();
   const sc=(sector||'').toLowerCase();
@@ -936,9 +949,9 @@ function getSignal(data){
 }
 function overallSignal(){
   const r=getSignal(portfolio.switching.retail),i=getSignal(portfolio.switching.ism);
-  if(r==='bull'&&i==='bull')return{s:'bull',label:'🟢 경기 강세',sub:'수출주·가치주·대형주 비중 확대',color:T.green};
+  if(r==='bull'&&i==='bull')return{s:'bull',label:'🟢 경기 강세',sub:'국내 대형주 ▲ · 해외 가치·대형주 ▲',color:T.green};
   if(r==='insufficient'||i==='insufficient')return{s:'wait',label:'⏳ 데이터 부족',sub:'지표 데이터를 입력해주세요',color:T.text3};
-  if(r==='bear'&&i==='bear')return{s:'bear',label:'🔴 경기 약세',sub:'내수주·성장주·소형주·채권·금 비중 확대',color:T.red};
+  if(r==='bear'&&i==='bear')return{s:'bear',label:'🔴 경기 약세',sub:'해외 성장주·대형주 ▲ · 국내 중소형 일부 ▲',color:T.red};
   if(r==='forming'||i==='forming')return{s:'forming',label:'🔶 신호 형성 중',sub:'3개월 연속 상승 조건 미충족 — 현재 비중 유지',color:T.amber};
   // 한 지표는 강세, 다른 지표는 약세 → 혼조
   return{s:'mixed',label:'🔶 지표 혼조',sub:'두 지표가 엇갈림 — 현재 비중 유지, 추세 확인 후 가감',color:T.amber};
@@ -1253,7 +1266,7 @@ async function selectStock(idx){
   selectedStockInfo=info;
   nameEl2.textContent=r.name;
   if(info.price&&avgEl&&!avgEl.value)avgEl.value=info.price;
-  const tags=classifyTags(r.name,info.sector,info.per,info.marketCap,r.type);
+  const tags=classifyTags(r.name,info.sector,info.per,info.marketCap,r.type,r.ticker);
   if(tagEl)tagEl.innerHTML='<span style="font-size:11px;color:'+T.text3+'">자동 분류: </span>'+renderTags(tags);
   if(formEl2)formEl2.setAttribute('data-tags',JSON.stringify(tags));
 }
@@ -1383,32 +1396,103 @@ function applyFixedTargets(){
   save();tab='rebal';render();
 }
 
-// ── 주식 스타일 비중 진단 (수출/내수, 가치/성장, 대형/소형) ──
-function styleTiltCard(){
+// ── 주식 버킷 내부 스타일 목표 (국면별, A쪽 %) ──
+// 근거: analysis/style_tilt/weights.py (2000~2026 월간 백테스트, 국면 신호 2개월 시차)
+//  기준 비중 = 전체·전반·후반 Sharpe 최적 비중의 평균, 국면 틸트 = 전/후반 모두 Sharpe 개선되는 조합(기준 ±15%p),
+//  전체 개선 0.01 미만이면 고정, 실무 분산 위해 5~95%로 제한. 사용자가 축별로 수동 변경 가능(portfolio.styleTargets).
+const STYLE_TARGETS={
+  kr:[{id:'kr.size',a:'대형주',b:'소형주',t:{bull:95,neutral:90,bear:75},why:'대형 상시 우위, 약세엔 소형 일부'},
+      {id:'kr.export',a:'수출주',b:'내수주',t:{bull:65,neutral:65,bear:65},why:'수출 우위, 국면 틸트 효과 없음 → 고정'}],
+  us:[{id:'us.value',a:'가치주',b:'성장주',t:{bull:75,neutral:60,bear:45},why:'강세 가치↑ · 약세 성장↑'},
+      {id:'us.size',a:'대형주',b:'소형주',t:{bull:80,neutral:65,bear:80},why:'국면 확정(강세·약세) 시 대형↑'}],
+};
+function styleTarget(ax){const m=(portfolio.styleTargets||{})[ax.id];return m?Object.assign({},ax.t,m):ax.t;}
+function styleIsManual(ax){return !!(portfolio.styleTargets||{})[ax.id];}
+function findStyleAxis(id){return [...STYLE_TARGETS.kr,...STYLE_TARGETS.us].find(a=>a.id===id);}
+function showStyleTargetModal(id){
+  const ax=findStyleAxis(id),cur=styleTarget(ax),k=regimeKey(overallSignal());
+  const inp=(rk,lab)=>`<div style="flex:1"><div style="font-size:11px;color:${rk===k?T.teal:T.text3};margin-bottom:4px;text-align:center">${lab}${rk===k?' (현재)':''}</div>
+    <input type="number" id="st_${rk}" value="${cur[rk]}" min="0" max="100" step="5" style="font-size:16px;text-align:center;font-family:monospace"></div>`;
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:4px">✎ ${ax.a} : ${ax.b} 목표</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:14px">${ax.a} 비중(%)을 국면별로 입력하세요. ${ax.b}는 나머지로 자동 계산됩니다.<br>백테스트 권장값: 강세 ${ax.t.bull} · 중립 ${ax.t.neutral} · 약세 ${ax.t.bear}</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">${inp('bull','🟢 강세')}${inp('neutral','🔶 중립')}${inp('bear','🔴 약세')}</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="saveStyleTarget('${id}')" class="tap" style="flex:1;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">저장</button>
+      <button onclick="resetStyleTarget('${id}')" class="tap" style="flex:1;padding:13px;background:${T.bg3};color:${T.amber};border-radius:12px;font-size:13px">권장값 복원</button>
+      <button onclick="closeModal()" class="tap" style="padding:13px 16px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:13px">취소</button>
+    </div>`);
+}
+function saveStyleTarget(id){
+  const ax=findStyleAxis(id),v={};
+  for(const rk of['bull','neutral','bear']){
+    const n=parseFloat(document.getElementById('st_'+rk)?.value);
+    if(isNaN(n)||n<0||n>100){alert('0~100 사이 숫자를 입력하세요.');return;}
+    v[rk]=Math.round(n);
+  }
+  if(!portfolio.styleTargets)portfolio.styleTargets={};
+  if(v.bull===ax.t.bull&&v.neutral===ax.t.neutral&&v.bear===ax.t.bear)delete portfolio.styleTargets[id];
+  else portfolio.styleTargets[id]=v;
+  save();closeModal();render();
+}
+function resetStyleTarget(id){if(portfolio.styleTargets)delete portfolio.styleTargets[id];save();closeModal();render();}
+function resetAllStyleTargets(){portfolio.styleTargets={};save();render();}
+// 버킷 내 축 비중: A/(A+B). '지수'(혼합)는 가치/성장 축에서 50:50 분할, 그 외 미태그 종목은 제외
+function styleAxis(rows,a,b){
+  let A=0,B=0;
+  rows.forEach(r=>{const t=r.h.tags||[];if(t.includes('헤지'))return;
+    if(t.includes(a))A+=r.ev;else if(t.includes(b))B+=r.ev;
+    else if(a==='가치주'&&t.includes('지수')){A+=r.ev/2;B+=r.ev/2;}});
+  const d=A+B;return{A,B,d,pa:d?A/d*100:null};
+}
+function styleBuckets(){
   const EX=portfolio.exRate;
-  const rows=[];
-  [...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs].forEach(h=>rows.push({h,ev:h.qty*h.cur}));
-  portfolio.holdings.us.forEach(h=>rows.push({h,ev:h.qty*h.cur*EX}));
-  const total=rows.reduce((s,r)=>s+r.ev,0);
-  const axis=(a,b)=>{let A=0,B=0;rows.forEach(r=>{const t=r.h.tags||[];if(t.includes(a))A+=r.ev;if(t.includes(b))B+=r.ev;});const d=A+B;return{A,B,pa:d?A/d*100:null,pb:d?B/d*100:null};};
-  const axes=[
-    {a:'수출주',b:'내수주',bullFav:'a'},
-    {a:'가치주',b:'성장주',bullFav:'a'},
-    {a:'대형주',b:'소형주',bullFav:'a'},
-  ];
-  const k=regimeKey(overallSignal());
-  const favSide=k==='bull'?'a':k==='bear'?'b':null;
-  const hedge=rows.filter(r=>(r.h.tags||[]).includes('헤지')).reduce((s,r)=>s+r.ev,0);
+  return{
+    kr:[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs].map(h=>({h,ev:h.qty*h.cur})),
+    us:portfolio.holdings.us.map(h=>({h,ev:h.qty*h.cur*EX})),
+  };
+}
+function styleTiltCard(){
+  const k=regimeKey(overallSignal()),B=styleBuckets();
+  const kLabel=k==='bull'?'🟢 강세':k==='bear'?'🔴 약세':'🔶 중립';
+  const bucket=(key,title)=>{
+    const rows=B[key],total=rows.reduce((s,r)=>s+r.ev,0);
+    if(!total)return'';
+    const hedge=rows.filter(r=>(r.h.tags||[]).includes('헤지')).reduce((s,r)=>s+r.ev,0);
+    return `<div style="margin-top:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:${T.text};margin-bottom:6px"><span>${title}</span><span class="mono" style="color:${T.text3};font-weight:400">${won(total,true)}</span></div>
+      ${STYLE_TARGETS[key].map(ax=>{
+        const r=styleAxis(rows,ax.a,ax.b),tg=styleTarget(ax)[k],man=styleIsManual(ax);
+        if(r.pa==null)return `<div onclick="showStyleTargetModal('${ax.id}')" class="tap" style="font-size:11px;color:${T.text3};margin-bottom:6px">${ax.a}/${ax.b}: 분류된 종목 없음 · 목표 ${tg} : ${100-tg} ✎</div>`;
+        const gap=tg-r.pa,amt=Math.abs(gap)/100*r.d,ok=Math.abs(gap)<5;
+        const side=gap>0?ax.a:ax.b,col=ok?T.green:T.amber;
+        return `<div onclick="showStyleTargetModal('${ax.id}')" class="tap" style="background:${T.bg2};border-radius:10px;padding:8px 10px;margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+            <span style="color:${T.text2}">${ax.a} : ${ax.b}</span>
+            <span class="mono"><span style="color:${T.text}">${r.pa.toFixed(0)} : ${(100-r.pa).toFixed(0)}</span> <span style="color:${man?T.purple:T.text3}">→ 목표 ${tg} : ${100-tg}${man?' (수동)':''} ✎</span></span>
+          </div>
+          <div style="height:6px;background:${T.bg3};border-radius:3px;margin:6px 0 5px;position:relative;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,r.pa).toFixed(1)}%;background:${TAG_COLOR[ax.a]}"></div>
+            <div style="position:absolute;left:${tg}%;top:-2px;bottom:-2px;width:2px;background:${T.text}"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px">
+            <span style="color:${T.text3}">${man?'수동 설정 · 권장 '+ax.t[k]+' : '+(100-ax.t[k]):ax.why}</span>
+            <span style="color:${col};font-weight:700;white-space:nowrap">${ok?'✓ 적정 범위':`${side} ▲ ${Math.abs(gap).toFixed(0)}%p (≈${won(amt,true)})`}</span>
+          </div>
+        </div>`;}).join('')}
+      ${hedge>0?`<div style="font-size:10px;color:${T.text3}">🛡 헤지(인버스) ${(hedge/total*100).toFixed(1)}% — 스타일 계산 제외</div>`:''}
+    </div>`;
+  };
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.border};margin-bottom:14px;padding:12px 16px">
-    <div style="font-size:13px;font-weight:700;color:${T.text};margin-bottom:4px">🧭 주식 스타일 비중 진단</div>
-    <div style="font-size:11px;color:${T.text3};margin-bottom:10px">${k==='bull'?'강세 신호 — 수출·가치·대형주 비중을 높이는 방향':k==='bear'?'약세 신호 — 내수·성장·소형주 비중을 높이는 방향':'중립 — 스타일 중립 유지'} (진단 대상 주식 평가액 ${won(total,true)})</div>
-    ${axes.map(ax=>{const r=axis(ax.a,ax.b);if(r.pa==null)return'';const fav=favSide==='a'?ax.a:favSide==='b'?ax.b:null;
-      const chip=(nm,p,side)=>`<div style="flex:1;text-align:center;padding:7px 4px;border-radius:8px;background:${fav===side?(k==='bull'?T.green:T.amber)+'1A':T.bg2}">
-        <div style="font-size:11px;color:${fav===side?(k==='bull'?T.green:T.amber):T.text2};font-weight:700">${nm}${fav===side?' ▲':''}</div>
-        <div class="mono" style="font-size:14px;color:${T.text};font-weight:700;margin-top:1px">${p.toFixed(0)}%</div></div>`;
-      return `<div style="display:flex;gap:6px;margin-bottom:7px">${chip(ax.a,r.pa,'a')}<div style="align-self:center;color:${T.text3};font-size:11px">vs</div>${chip(ax.b,r.pb,'b')}</div>`;}).join('')}
-    ${hedge>0?`<div style="font-size:11px;color:${T.text3};margin-top:2px">🛡 헤지(인버스) 비중: <span class="mono" style="color:${TAG_COLOR['헤지']}">${(hedge/total*100).toFixed(1)}%</span></div>`:''}
-    <div style="font-size:10px;color:${T.text3};margin-top:8px;line-height:1.5">태그가 both/neither 인 종목은 양쪽 합에서 제외되므로 비중 합은 100%가 아닙니다.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:13px;font-weight:700;color:${T.text}">🧭 주식 내부 스타일 목표</div>
+      <span style="font-size:11px;color:${T.text2}">현재 국면 ${kLabel}</span>
+    </div>
+    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">국내·해외 주식 버킷 안의 비중입니다. 차이 5%p 이상이면 <b>매월 적립금을 ▲ 쪽에 먼저 배분</b>해 맞추세요(매도 최소화).</div>
+    ${bucket('kr','🇰🇷 국내주식')}
+    ${bucket('us','🌏 해외주식')}
+    ${Object.keys(portfolio.styleTargets||{}).length?`<button onclick="resetAllStyleTargets()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">전체 권장값으로 복원</button>`:''}
+    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">목표는 2000~2026 월간 백테스트 권장값입니다(analysis/style_tilt/weights.py). 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 개선폭은 Sharpe +0.02~0.03 수준이라 자산군 비중(고정 20/30/10/30/10)이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
   </div>`;
 }
 
@@ -1492,7 +1576,8 @@ function switchingScreen(){
       <div style="font-size:12px;color:${T.text2};line-height:1.7">
         두 지표 <b style="color:${T.teal}">모두 MA3 3개월 연속 ↑</b> → 🟢 경기 강세<br>
         둘 다 ↓ → 🔴 경기 약세 · 한쪽만 ↑ 또는 엇갈림 → 🔶 중립(비중 유지)<br>
-        <span style="color:${T.teal}">강세: 수출주·가치주·대형주 ▲</span> / <span style="color:${T.amber}">약세: 내수주·성장주·소형주·채권·금 ▲</span><br>
+        <span style="color:${T.teal}">강세: 국내 대형주 ▲ · 해외 가치·대형주 ▲</span><br><span style="color:${T.amber}">약세: 해외 성장주·대형주 ▲ · 국내 중소형 일부 ▲</span><br>
+        <span style="color:${T.text3};font-size:11px">원 전략의 '약세→소형주'는 미국 데이터에선 반대(대형 우위), 수출/내수는 국면 차이 없음</span><br>
         <span style="color:${T.text3};font-size:11px">소매판매: 전전월치 발표 (6월→4월) · ISM: 전월치 발표 (6월→5월)</span>
       </div>
     </div>
