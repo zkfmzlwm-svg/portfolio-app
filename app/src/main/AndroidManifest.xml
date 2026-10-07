@@ -5,7 +5,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="포트폴리오"
+        android:label="${appLabel}"
         android:theme="@style/Theme.App"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security">
