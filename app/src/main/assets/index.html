@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v5.0</title>
+<title>포트폴리오 v5.1</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -197,6 +197,18 @@ const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrde
 const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:30,crypto:10};
 const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 30 · 코인 10%';
 
+// 워치리스트 — 해외(미국) 시드. cur·targetPrice는 추정치(placeholder)로, 앱 실행 시 자동 업데이트가
+// 네이버 해외주식 컨센서스로 즉시 덮어쓴다. eps·indPer는 업종 PER 비교용 고정값(자동 갱신 안 됨 — 국내
+// 종목도 동일 방식)이라 수치는 대략적인 추정이며, 정확한 값이 필요하면 종목 수정에서 직접 보정하면 된다.
+const OVERSEAS_WATCHLIST_SEED=[
+  {id:'w19',name:'NVIDIA',ticker:'NVDA',usd:true,cur:180,tags:['성장주','대형주'],eps:3.0,indPer:35,targetPrice:230},
+  {id:'w20',name:'Microsoft',ticker:'MSFT',usd:true,cur:480,tags:['성장주','대형주'],eps:13.0,indPer:32,targetPrice:580},
+  {id:'w21',name:'Amazon',ticker:'AMZN',usd:true,cur:230,tags:['성장주','대형주'],eps:5.5,indPer:40,targetPrice:290},
+  {id:'w22',name:'Apple',ticker:'AAPL',usd:true,cur:255,tags:['성장주','대형주'],eps:7.0,indPer:30,targetPrice:300},
+  {id:'w23',name:'JPMorgan Chase',ticker:'JPM',usd:true,cur:265,tags:['가치주','대형주'],eps:18.0,indPer:12,targetPrice:300},
+  {id:'w24',name:'ExxonMobil',ticker:'XOM',usd:true,cur:115,tags:['가치주','대형주'],eps:8.0,indPer:12,targetPrice:135},
+];
+
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
@@ -270,6 +282,8 @@ const INIT={
       {id:'w16',name:'현대차',code:'005380',cur:490000,tags:['수출주','가치주','대형주'],eps:42000,indPer:6,targetPrice:750000},
       {id:'w17',name:'POSCO홀딩스',code:'005490',cur:380000,tags:['수출주','가치주','대형주'],eps:18000,indPer:20,targetPrice:550000},
       {id:'w18',name:'한화에어로스페이스',code:'012450',cur:780000,tags:['수출주','성장주','대형주'],eps:22000,indPer:35,targetPrice:1000000},
+      // 해외(미국) — cur·targetPrice는 임시값. 앱 실행/가격 업데이트 시 네이버 해외 컨센서스로 즉시 덮어써짐
+      ...OVERSEAS_WATCHLIST_SEED,
     ]
   },
   switching:{
@@ -286,7 +300,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'5.0'
+  ver:'5.1'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -619,7 +633,14 @@ function migratePortfolio(p){
       h.usd=true;
     });
   }
-  p.ver='5.0';
+  // v5.1: 워치리스트에 해외(미국) 종목 시드 추가 — 이미 같은 티커가 있으면 건너뜀(중복 방지,
+  // 사용자가 직접 추가/삭제한 내역은 그대로 보존)
+  if(vn<5.1){
+    const have=new Set((p.holdings.watchlist||[]).map(h=>h.ticker).filter(Boolean));
+    const add=OVERSEAS_WATCHLIST_SEED.filter(h=>!have.has(h.ticker));
+    if(add.length)p.holdings.watchlist=[...(p.holdings.watchlist||[]),...JSON.parse(JSON.stringify(add))];
+  }
+  p.ver='5.1';
   return p;
 }
 
@@ -1798,7 +1819,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.1</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
