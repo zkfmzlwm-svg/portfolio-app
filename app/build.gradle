@@ -8,8 +8,8 @@ android {
         applicationId "com.portfolio.app"
         minSdk 24
         targetSdk 34
-        versionCode 10
-        versionName "5.1"
+        versionCode 11
+        versionName "5.2"
         // 런처 아이콘 아래 앱 이름에 버전을 직접 노출 → 앱을 열지 않고도 설치된 빌드 확인 가능
         manifestPlaceholders = [appLabel: "포트폴리오 v${versionName}"]
     }
