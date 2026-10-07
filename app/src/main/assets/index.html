@@ -1025,6 +1025,47 @@ async function fetchUsTargetPrice(ticker,h){
   return null;
 }
 
+// 응답 JSON을 재귀 탐색해 name/title에 '목표주가'를 포함하는 항목의 value를 찾는다
+// (네이버 모바일 API는 통계 항목을 {name,value} 형태 배열로 내려주는 경우가 많아, 정확한 키 경로가
+//  바뀌어도(문서화되지 않음) 라벨 기준 매칭이 더 안정적이다)
+function findLabeledValue(node,labelRe,depth){
+  if(depth==null)depth=0;
+  if(!node||typeof node!=='object'||depth>6)return null;
+  if(Array.isArray(node)){
+    for(const item of node){const r=findLabeledValue(item,labelRe,depth+1);if(r!=null)return r;}
+    return null;
+  }
+  const label=node.name||node.title||node.itemName||node.label;
+  if(typeof label==='string'&&labelRe.test(label)){
+    const raw=node.value??node.val??node.price??node.compareValue;
+    if(raw!=null){
+      const p=parseFloat(String(raw).replace(/,/g,''));
+      if(!isNaN(p)&&p>0)return p;
+    }
+  }
+  for(const k in node){
+    if(k==='name'||k==='title'||k==='itemName'||k==='label')continue;
+    const r=findLabeledValue(node[k],labelRe,depth+1);
+    if(r!=null)return r;
+  }
+  return null;
+}
+// 국내: 네이버 증권사 목표주가 컨센서스 (문서화되지 않은 API 라벨 기반 매칭 — 실패해도 조용히 null)
+async function fetchKrTargetPrice(code){
+  try{
+    const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/integration');
+    return findLabeledValue(d,/목표주가/);
+  }catch(e){return null;}
+}
+// 해외: 야후 파이낸스 애널리스트 평균 목표주가(financialData.targetMeanPrice)
+async function fetchUsTargetPrice(ticker){
+  try{
+    const d=await nativeGet('https://query1.finance.yahoo.com/v10/finance/quoteSummary/'+ticker+'?modules=financialData');
+    const p=d?.quoteSummary?.result?.[0]?.financialData?.targetMeanPrice?.raw;
+    return p>0?p:null;
+  }catch(e){return null;}
+}
+
 // ── 실시간 환율(USD/KRW) ──
 async function fetchExRate(){
   try{
