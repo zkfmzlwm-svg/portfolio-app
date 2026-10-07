@@ -20,6 +20,16 @@ for(const t of['home','holdings','switching','rebal','analysis','settings']){
 }
 for(const ch of['kr','us','bonds','alts','watch']){run("catH='"+ch+"';render()");const out=els.app._html;
   for(const bad of['undefined','NaN']){if(out.includes(bad)){console.log('✗ holdings/'+ch,bad);issues++;}}}
+// 장기보유(keep) 지정 상태에서도 전 탭 렌더 깨짐 없음
+run("toggleKeep('s4');toggleKeep('ue1');toggleKeep('g1')");
+for(const t of['home','holdings','switching','rebal']){
+  run("tab='"+t+"';render()");
+  const out=els.app._html;
+  for(const bad of['undefined','NaN','function ','[object']){if(out.includes(bad)){console.log('✗ keep',t,'contains',bad);issues++;}}
+}
+run("showKeepModal()");
+for(const bad of['undefined','NaN','[object']){if((els['modal-root']._html||'').includes(bad)){console.log('✗ keep modal contains',bad);issues++;}}
+run("closeModal()");
 // 모달들
 run("showLedger()");run("closeModal()");
 run("showTradeModal('kr','s4','buy')");

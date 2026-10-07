@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='5.1','버전 5.1, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='5.2','버전 5.2, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -128,7 +128,7 @@ ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목),
 // 7b. v5.1 마이그레이션: 기존 사용자 워치리스트에 해외 시드 종목 비파괴적으로 병합
 const migratedOnce=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
   watchlist:[{id:'old1',name:'내가 추가한 종목',code:'999999'}]},txns:[],targets:{},switching:{}})`);
-ok(migratedOnce.ver==='5.1','마이그레이션 후 ver 5.1, got '+migratedOnce.ver);
+ok(migratedOnce.ver==='5.2','마이그레이션 후 ver 5.2, got '+migratedOnce.ver);
 ok(migratedOnce.holdings.watchlist.some(h=>h.name==='내가 추가한 종목'),'기존 워치리스트 항목 보존');
 ok(migratedOnce.holdings.watchlist.filter(h=>h.ticker==='NVDA').length===1,'해외 시드(NVDA) 1건 병합');
 const seed=run('OVERSEAS_WATCHLIST_SEED');
@@ -142,6 +142,44 @@ ok(migratedDup.holdings.watchlist.find(h=>h.ticker==='AAPL').name==='내가 산 
 sandbox.pendingPortfolio=migratedOnce;
 const already=run('migratePortfolio(JSON.parse(JSON.stringify(pendingPortfolio)))');
 ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'ver 5.1 재마이그레이션은 멱등 (중복 추가 없음)');
+
+// 7c. 장기보유(keep) 종목: 총자산엔 포함, 리밸런싱·스위칭 스타일 계산에서는 제외
+{
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
+  const full=run('calc()'),rb0=run('calc(true)');
+  ok(Math.abs(full.total-rb0.total)<1,'keep 없으면 리밸런싱 기준=총자산');
+  const s4v=run("(h=>h.qty*h.cur)(portfolio.holdings.kr_stocks.find(h=>h.id==='s4'))");
+  const spyv=run("(h=>h.qty*h.cur*portfolio.exRate)(portfolio.holdings.us.find(h=>h.id==='ue1'))");
+  run("toggleKeep('s4');toggleKeep('ue1')");
+  ok(run("portfolio.holdings.kr_stocks.find(h=>h.id==='s4').keep")===true,'toggleKeep → keep=true');
+  const full2=run('calc()'),rb=run('calc(true)');
+  ok(Math.abs(full2.total-full.total)<1,'총자산은 keep 지정과 무관: '+full2.total);
+  ok(Math.abs(rb.kr-(full.kr-s4v))<1,'리밸런싱 기준 국내에서 삼성전자 제외');
+  ok(Math.abs(rb.us-(full.us-spyv))<1,'리밸런싱 기준 해외에서 SPY 제외');
+  ok(Math.abs(rb.total-(full.total-s4v-spyv))<1,'리밸런싱 기준 총액 = 총자산 − 장기보유');
+  const rrows=run('rebalRows()');
+  ok(Math.abs(rrows.reduce((s,r)=>s+r.ev,0)-rb.total)<1,'rebalRows 합 = 리밸런싱 기준 총액');
+  ok(Math.abs(rrows.reduce((s,r)=>s+r.tval,0)-rb.total)<1,'목표금액 합 = 리밸런싱 기준 총액(장기보유 미포함)');
+  const kp=run('newMoneyPlan(200*10000)');
+  ok(Math.abs(kp.allocs.reduce((s,a)=>s+a.amt,0)-2000000)<2,'keep 지정 후에도 월 적립 전량 배분');
+  ok(kp.Xstar>=rb.total&&kp.Xstar<full.total+kp.totalNeed,'Xstar는 리밸런싱 기준');
+  const sb=run('styleBuckets()');
+  ok(!sb.kr.some(r=>r.h.id==='s4'),'스위칭 스타일 국내 버킷에서 삼성전자 제외');
+  ok(!sb.us.some(r=>r.h.id==='ue1'),'스위칭 스타일 해외 버킷에서 SPY 제외');
+  const ks=run('keptSummary()');
+  ok(ks.n===2&&Math.abs(ks.total-s4v-spyv)<1,'keptSummary 2종목·금액 일치');
+  // 스냅샷 붙여넣기(기존 종목 갱신)는 같은 객체를 수정하므로 keep 유지
+  ok(run("JSON.parse(JSON.stringify(portfolio)).holdings.kr_stocks.find(h=>h.id==='s4').keep")===true,'백업 JSON에 keep 보존');
+  run("toggleKeep('s4')");
+  ok(run("'keep' in portfolio.holdings.kr_stocks.find(h=>h.id==='s4')")===false,'재토글 → keep 필드 제거');
+  run("toggleKeep('w1')");
+  ok(!run("portfolio.holdings.watchlist.find(h=>h.id==='w1').keep"),'워치리스트는 keep 지정 불가');
+  // 국내 전 종목 장기보유 시 스타일 카드 안내 렌더
+  run("[...portfolio.holdings.kr_stocks,...portfolio.holdings.kr_etfs].forEach(h=>h.keep=true)");
+  ok(run('styleBuckets().kr.length')===0,'국내 전 종목 keep → 스타일 버킷 비어 있음');
+  ok(run('styleTiltCard()').includes('전 종목 🔒 장기보유'),'전 종목 keep 안내 표시');
+  run("tab='home';render();tab='rebal';render();tab='switching';render();tab='holdings';catH='kr';render();showKeepModal();closeModal()");pass++;
+}
 
 // 8. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
 run("portfolio=migratePortfolio(JSON.parse(localStorage.getItem('porto'))||JSON.parse(JSON.stringify(INIT)))");
