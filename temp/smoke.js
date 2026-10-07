@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='5.0','버전 5.0, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='5.1','버전 5.1, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -124,6 +124,24 @@ ok(removed.includes('제외대상'),'점수 낮은 미고정 종목 자동 제�
 ok(!namesAfter.includes('제외대상'),'제외된 종목이 실제 배열에서도 빠짐');
 ok(namesAfter.includes('고정종목'),'📌 고정 종목은 점수 낮아도 유지');
 ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목), got '+namesAfter[0]);
+
+// 7b. v5.1 마이그레이션: 기존 사용자 워치리스트에 해외 시드 종목 비파괴적으로 병합
+const migratedOnce=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
+  watchlist:[{id:'old1',name:'내가 추가한 종목',code:'999999'}]},txns:[],targets:{},switching:{}})`);
+ok(migratedOnce.ver==='5.1','마이그레이션 후 ver 5.1, got '+migratedOnce.ver);
+ok(migratedOnce.holdings.watchlist.some(h=>h.name==='내가 추가한 종목'),'기존 워치리스트 항목 보존');
+ok(migratedOnce.holdings.watchlist.filter(h=>h.ticker==='NVDA').length===1,'해외 시드(NVDA) 1건 병합');
+const seed=run('OVERSEAS_WATCHLIST_SEED');
+ok(seed.every(s=>migratedOnce.holdings.watchlist.some(h=>h.ticker===s.ticker)),'해외 시드 전종목 병합');
+// 이미 같은 티커로 추가해둔 경우 중복 삽입하지 않음
+const migratedDup=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
+  watchlist:[{id:'mine',name:'내가 산 애플',ticker:'AAPL',usd:true}]},txns:[],targets:{},switching:{}})`);
+ok(migratedDup.holdings.watchlist.filter(h=>h.ticker==='AAPL').length===1,'이미 있는 티커는 중복 추가 안 함');
+ok(migratedDup.holdings.watchlist.find(h=>h.ticker==='AAPL').name==='내가 산 애플','기존 항목 내용 그대로 유지(덮어쓰지 않음)');
+// 멱등성: 이미 5.1인 포트폴리오를 다시 돌려도 추가 안 됨
+sandbox.pendingPortfolio=migratedOnce;
+const already=run('migratePortfolio(JSON.parse(JSON.stringify(pendingPortfolio)))');
+ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'ver 5.1 재마이그레이션은 멱등 (중복 추가 없음)');
 
 // 8. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
 run("portfolio=migratePortfolio(JSON.parse(localStorage.getItem('porto'))||JSON.parse(JSON.stringify(INIT)))");

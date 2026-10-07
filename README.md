@@ -1,4 +1,4 @@
-# 📱 포트폴리오 앱 (v5.0)
+# 📱 포트폴리오 앱 (v5.1)
 
 증권사/코인 앱의 보유·거래 내역을 반영하고, 듀얼 스위칭 신호에 따라 자산 비중을
 어떻게 높이고 낮출지 판단하는 개인 포트폴리오 트래커입니다.
@@ -10,7 +10,7 @@ Android WebView 셸(`MainActivity.java`) + 단일 파일 웹앱(`app/src/main/as
 ### GitHub Actions (서버/로컬 환경 불필요)
 1. 이 리포를 GitHub에 push하면 **Build Portfolio APK** 워크플로가 자동 실행됩니다.
    (수동 실행도 가능: Actions 탭 → Run workflow)
-2. 완료 후 Artifacts에서 `portfolio-apk-v{버전}`(예: `portfolio-apk-v5.0`)을 다운로드 → 압축 해제.
+2. 완료 후 Artifacts에서 `portfolio-apk-v{버전}`(예: `portfolio-apk-v5.1`)을 다운로드 → 압축 해제.
 3. 정식 서명 키스토어 Secrets(`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)가
    없어도 **디버그 서명 APK**가 함께 산출되므로 바로 설치할 수 있습니다.
 4. 스마트폰에서 `.apk` 실행 → "출처를 알 수 없는 앱" 허용 → 설치.
@@ -47,6 +47,11 @@ Android WebView 셸(`MainActivity.java`) + 단일 파일 웹앱(`app/src/main/as
 > 마지막 스냅샷/거래 반영 결과가 기준입니다. 중요 데이터는 설정의 JSON 백업으로 보관하세요.
 
 ### 워치리스트 자동 관리 (목표주가 자동조회 + 자체 알고리즘, v5.0)
+기본 워치리스트에 국내 18종목과 함께 **해외 6종목**(NVIDIA·Microsoft·Amazon·Apple·JPMorgan Chase·
+ExxonMobil)이 포함돼 있습니다(v5.1). 기존에 앱을 쓰고 있던 사용자도 다음 업데이트 때 자동으로
+추가됩니다(마이그레이션 — 같은 티커가 이미 있으면 건너뛰고, 직접 추가/삭제한 내역은 그대로 유지).
+시드값의 현재가·목표가는 추정치일 뿐이며 아래 자동 조회로 즉시 실제 값으로 덮어써집니다.
+
 **앱을 실행할 때마다**(그리고 종목 탭 "↻ 가격 업데이트" 수동 클릭 시) 워치리스트 종목의
 **증권사 목표주가 컨센서스도 함께 자동 조회**됩니다(국내·해외 모두 네이버 증권 컨센서스
 `consensusInfo.priceTargetMean` 기준 — 야후 quoteSummary는 crumb 인증이 필요해 사용하지 않습니다).
