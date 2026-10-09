@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='5.2','버전 5.2, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='5.3','버전 5.3, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -128,7 +128,7 @@ ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목),
 // 7b. v5.1 마이그레이션: 기존 사용자 워치리스트에 해외 시드 종목 비파괴적으로 병합
 const migratedOnce=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
   watchlist:[{id:'old1',name:'내가 추가한 종목',code:'999999'}]},txns:[],targets:{},switching:{}})`);
-ok(migratedOnce.ver==='5.2','마이그레이션 후 ver 5.2, got '+migratedOnce.ver);
+ok(migratedOnce.ver==='5.3','마이그레이션 후 ver 5.3, got '+migratedOnce.ver);
 ok(migratedOnce.holdings.watchlist.some(h=>h.name==='내가 추가한 종목'),'기존 워치리스트 항목 보존');
 ok(migratedOnce.holdings.watchlist.filter(h=>h.ticker==='NVDA').length===1,'해외 시드(NVDA) 1건 병합');
 const seed=run('OVERSEAS_WATCHLIST_SEED');
@@ -179,6 +179,89 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run('styleBuckets().kr.length')===0,'국내 전 종목 keep → 스타일 버킷 비어 있음');
   ok(run('styleTiltCard()').includes('전 종목 🔒 장기보유'),'전 종목 keep 안내 표시');
   run("tab='home';render();tab='rebal';render();tab='switching';render();tab='holdings';catH='kr';render();showKeepModal();closeModal()");pass++;
+}
+
+// 7d. 반기(6·12월) 정기 + ±5%p 수시 리밸런싱, 주식 종목 상한 트림 (v5.3)
+{
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;delete portfolio.lastRebal");
+  // 일정: 10월 → 다음 12월 말, 6월(미기록) → 이번 달 차례, 6월 기록 후 → 12월, 12월 기록 후 → 다음 해 6월
+  const s10=run("rebalSchedule(new Date(2026,9,9))");
+  ok(s10.nm===12&&!s10.due&&s10.nextLabel==='2026년 12월 말','10월 → 다음 정기 12월 말: '+s10.nextLabel);
+  ok(s10.dday===83,'10/9 → 12/31 D-83, got '+s10.dday);
+  const s6=run("rebalSchedule(new Date(2026,5,15))");
+  ok(s6.due&&s6.nm===6,'6월 미기록 → 이번 달 정기 차례');
+  run("portfolio.lastRebal='2026-06-28'");
+  const s6d=run("rebalSchedule(new Date(2026,5,30))");
+  ok(!s6d.due&&s6d.nm===12,'6월 기록 후 → 다음 12월');
+  run("portfolio.lastRebal='2026-12-24'");
+  const s12d=run("rebalSchedule(new Date(2026,11,26))");
+  ok(!s12d.due&&s12d.nextLabel==='2027년 6월 말','12월 기록 후 → 다음 해 6월: '+s12d.nextLabel);
+  ok(run("rebalSchedule(new Date(2027,0,5)).nm")===6,'1월 → 6월');
+  run("delete portfolio.lastRebal");
+  run("markRebalDone()");
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(run('portfolio.lastRebal')),'완료 기록 날짜 저장: '+run('portfolio.lastRebal'));
+  ok(run("migratePortfolio(JSON.parse(JSON.stringify(portfolio))).lastRebal")===run('portfolio.lastRebal'),'마이그레이션·백업 후 완료 기록 유지');
+  run("delete portfolio.lastRebal");
+
+  // 밴드: INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/30/10) → ±5%p 초과 국내·해외·금·코인
+  const br=run("bandBreaches().map(r=>r.k)");
+  ok(br.join()==='kr,us,gold,crypto','±5%p 초과 자산군: '+br.join());
+  ok(run("rebalStatus().level")==='band','밴드 초과 시 상태 band');
+  run("portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3}");
+  ok(run("bandBreaches().length")===0,'목표=현재면 밴드 초과 없음');
+  run("portfolio.targets=Object.assign({},FIXED_TARGETS)");
+  ok(run("bandBreaches(rebalRows().map(r=>Object.assign({},r,{ev:0})))").length===0,'자산 0이면 밴드 경보 없음');
+
+  // 상한 트림 — 국내(목표 초과 버킷): 10종목 상한 20%, B'=목표 금액, 상한 종목 ≤20%, 합계 = 자산군 매도액
+  const rr=run("rebalRows()"),krR=rr.find(r=>r.k==='kr');
+  const kp=run("trimPlan('kr')");
+  ok(kp.n===10&&Math.abs(kp.cap-0.2)<1e-12,'국내 10종목 상한 20%');
+  ok(kp.over&&Math.abs(kp.Bp-krR.tval)<1,'국내 목표 초과 → 목표 금액 기준');
+  const dsum=kp.items.reduce((s,i)=>s+i.delta,0);
+  ok(Math.abs(dsum+krR.diff)<1,`종목 매도 합계=자산군 매도액 (${Math.round(-dsum)} vs ${Math.round(krR.diff)})`);
+  ok(kp.items.every(i=>i.t<=kp.cap*kp.Bp+1e-6),'트림 후 모든 종목 ≤ 상한');
+  const stp=kp.items.find(i=>i.id==='s1');
+  ok(stp.capped&&Math.abs(stp.wt-20)<1e-6,'에스티팜 상한 20%로 트림: '+stp.wt);
+  ok(kp.items[0].id==='s1','최대 매도 종목 = 에스티팜');
+  const unc=kp.items.filter(i=>!i.capped&&i.ev>0),ratio=unc.map(i=>i.t/i.ev);
+  ok(Math.max(...ratio)-Math.min(...ratio)<1e-9,'상한 미만 종목은 같은 비율로 축소(현재 비중 유지)');
+  ok(kp.items.every(i=>i.delta<=1e-6),'목표 초과 버킷은 매수 없음');
+  // 해외(목표 미달 버킷): 8종목 상한 25%, SPY 30.8%는 지수 태그로 제외 → 매매 없음
+  const up=run("trimPlan('us')");
+  ok(up.n===8&&!up.over&&Math.abs(up.Bp-up.B)<1,'해외 목표 미달 → 현재 버킷 기준');
+  ok(up.items.find(i=>i.id==='ue1').exempt,'SPY 지수 태그 → 상한 제외');
+  ok(up.items.every(i=>Math.abs(i.delta)<1),'해외 상한 초과 종목 없음 → 매매 0');
+  // 목표 미달 버킷에서 상한 초과 종목: 초과분 매도 → 나머지에 현재 비중대로 재배분(합계 0)
+  run("portfolio.holdings.us.find(h=>h.id==='u2').qty=30");   // CAH 대폭 확대
+  const up2=run("trimPlan('us')"),cah=up2.items.find(i=>i.id==='u2');
+  ok(cah.capped&&cah.delta<0&&Math.abs(cah.wt-25)<1e-6,'CAH 상한 25%로 트림');
+  ok(Math.abs(up2.items.reduce((s,i)=>s+i.delta,0))<1,'미달 버킷 트림은 버킷 내 재배분(합계 0)');
+  ok(up2.items.filter(i=>!i.capped).every(i=>i.delta>=-1e-6),'나머지 종목은 매수만');
+  ok(up2.trimSum>0&&Math.abs(up2.trimSum+cah.delta)<1,'트림 합계 = CAH 매도액');
+  // 목표를 살짝 넘은 버킷 + 상한 크게 넘은 종목: 트림 매도 일부는 자산군 매도, 나머지는 다른 종목 재매수
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets={kr:41,us:12.8,bonds:7,gold:15,crypto:24.2}");
+  const sl=run("trimPlan('kr')"),slR=run("rebalRows()").find(r=>r.k==='kr');
+  ok(sl.over&&Math.abs(sl.items.reduce((s,i)=>s+i.delta,0)+slR.diff)<1,'소폭 초과 버킷도 종목 합계=자산군 매도액');
+  ok(sl.items.some(i=>!i.capped&&i.delta>0)&&run("trimCard('kr','국내')").includes('다른 종목에 현재 비중대로 다시 삽니다'),'트림액>자산군 매도액이면 나머지 재매수 안내');
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
+  ok(run("trimCard('kr','국내')").includes('나머지 종목은 현재 비중대로 매도합니다'),'대폭 초과 버킷은 나머지 비중대로 매도 안내');
+  // 장기보유 종목은 트림 대상·N에서 제외
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;toggleKeep('s1')");
+  const kk=run("trimPlan('kr')");
+  ok(kk.n===9&&!kk.items.some(i=>i.id==='s1'),'에스티팜 🔒 → 트림 대상·N 제외 (N='+kk.n+')');
+  // 종목 3개 미만 → 미적용
+  run("portfolio.holdings.us=portfolio.holdings.us.slice(0,2)");
+  ok(run("trimPlan('us').skip")===true,'해외 2종목 → 상한 트림 미적용');
+  run("portfolio.holdings.us=[]");
+  ok(run("trimCard('us','해외')")==='','해외 버킷 비면 카드 생략');
+  run("tab='home';render();tab='rebal';render()");pass++;
+  ok(run("rebalScreen()").includes('주식 종목 상한 트림')&&run("rebalScreen()").includes('✂ 에스티팜')===false,'리밸런싱 화면 렌더(에스티팜 🔒이면 트림 표에 없음)');
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
+  const scr=run("rebalScreen()");
+  ok(scr.includes('✂ 에스티팜')&&scr.includes('수시 리밸런싱 필요'),'리밸런싱 화면: 수시 경보 + 에스티팜 트림 표시');
+  ok(run("homeRebalBanner()").includes('수시 리밸런싱 필요'),'홈 경보 배너');
+  run("portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3}");
+  ok(run("homeRebalBanner()")===''||run("rebalSchedule().due"),'밴드 내·정기 달 아님 → 홈 배너 없음');
 }
 
 // 8. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
