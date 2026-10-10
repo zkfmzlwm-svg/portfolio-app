@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v5.3</title>
+<title>포트폴리오 v5.4</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -194,7 +194,7 @@ const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrde
 // 근거: 2003-01~2026-09 월간 KRW 백테스트 (analysis/regime_weights/static.py·robust.py·candidates.py)
 // 과거 수익률 최적화는 기간마다 크게 흔들림(워크포워드 OOS Sharpe 0.83) → 방법 간 공통 결과(채권↓·금↑·코인 5~20%)만 반영.
 // 전체기간 Sharpe 1.08 / MDD −13.2% (기존 25/25/20/20/10: 1.04 / −15.2%). 월 적립금 부족분 배분 권장.
-// 리밸런싱 주기는 반기(6·12월) 정기 + ±5%p 수시 (analysis/rebal_cycle, 아래 REBAL_MONTHS·REBAL_BAND).
+// 리밸런싱 주기는 반기(6·12월) 정기 + 목표 금액 ±25% 수시 (analysis/rebal_cycle, 아래 REBAL_MONTHS·REBAL_REL).
 const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:30,crypto:10};
 const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 30 · 코인 10%';
 
@@ -301,7 +301,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'5.3'
+  ver:'5.4'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -643,7 +643,8 @@ function migratePortfolio(p){
   }
   // v5.2: 장기보유(h.keep) 플래그 추가 — 필드 없으면 미지정(리밸런싱 포함)이라 데이터 변환 불필요
   // v5.3: 반기 리밸런싱 완료 기록(p.lastRebal) 추가 — 필드 없으면 '기록 없음'이라 데이터 변환 불필요
-  p.ver='5.3';
+  // v5.4: 수시 기준을 목표 금액 ±25%로 변경, 알림은 6·12월 정기만 — 데이터 변환 불필요
+  p.ver='5.4';
   return p;
 }
 
@@ -810,18 +811,20 @@ function newMoneyPlan(monthlyWon){
   return{Xstar,totalNeed,allocs,months:monthlyWon>0?Math.ceil(Math.max(0,totalNeed)/monthlyWon):0};
 }
 
-// ── 반기(6·12월) 정기 리밸런싱 + ±5%p 수시 + 주식 종목 상한 트림 (v5.3) ──
+// ── 반기(6·12월) 정기 리밸런싱 + 목표 금액 ±25% 수시 + 주식 종목 상한 트림 (v5.3, 수시 기준 v5.4) ──
 // 근거: analysis/rebal_cycle (2003-01~2026-09, 비용 0.3%)
-//  자산군: 반기 단독 Sharpe 1.105·MDD −15.3%(코인 이탈 최대 +26.8%p) → 월말 ±5%p 초과 시 수시 추가로 1.106·−13.1% (분기 1.115·−13.3%)
+//  자산군: 반기 단독 Sharpe 1.105·MDD −15.3%(코인 이탈 최대 +26.8%p) → 월말 목표 금액 ±25% 초과 시 수시 추가로 1.087·−13.1%
+//         (±5%p 기준 1.106·−13.1%, 분기 1.115·−13.3%). 알림은 6·12월 정기만, 수시 기준 초과는 리밸런싱 탭에 참고 표시
 //  주식 내부: 6·12월 전 종목 동일비중 복원은 상폐 위험(연 2~3%) 반영 시 이득 소멸(하락주 물타기) →
 //            동일비중 2배(2/N) 초과분만 줄이는 상한 트림이 국내·미국·FF 49산업 모두 Sharpe 우위(65~96%), 회전율 1/4~1/8
-const REBAL_MONTHS=[6,12],REBAL_BAND=5,TRIM_MULT=2,TRIM_MIN_N=3;
+const REBAL_MONTHS=[6,12],REBAL_REL=25,TRIM_MULT=2,TRIM_MIN_N=3;   // REBAL_REL: 수시 기준 — 자산군 금액이 목표 금액 대비 ±25% (100만원 → 125만원·75만원)
 const localYmd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function bandBreaches(rows){
   rows=rows||rebalRows();
   if(!(rows.reduce((s,r)=>s+r.ev,0)>0))return[];
-  return rows.filter(r=>Math.abs(r.cur-r.w*100)>REBAL_BAND);
+  return rows.filter(r=>r.tval>0&&Math.abs(relDev(r))>REBAL_REL);
 }
+function relDev(r){return r.tval>0?(r.ev/r.tval-1)*100:0;}   // 목표 금액 대비 %
 // 다음 정기 리밸런싱(6·12월 말)과 이번 달 실행 여부 — portfolio.lastRebal('완료 기록' 날짜, 현지 YYYY-MM-DD)
 function rebalSchedule(now){
   now=now||new Date();
@@ -834,8 +837,8 @@ function rebalSchedule(now){
 }
 function rebalStatus(){
   const rows=rebalRows(),br=bandBreaches(rows),sc=rebalSchedule();
-  const maxDev=rows.reduce((a,r)=>{const d=r.cur-r.w*100;return Math.abs(d)>Math.abs(a.d)?{d,name:r.name}:a;},{d:0,name:''});
-  return{rows,br,sc,maxDev,level:br.length?'band':sc.due?'due':'ok'};
+  // 알림(홈 배너·강조)은 6·12월 정기만. 수시 기준 초과(br)는 리밸런싱 탭에 참고로만 표시
+  return{rows,br,sc,level:sc.due?'due':'ok'};
 }
 function markRebalDone(){portfolio.lastRebal=localYmd(new Date());save();render();}
 
@@ -1415,7 +1418,7 @@ function homeScreen(){
     </div>
     ${homeRebalBanner()}
     ${secL(ks.n?'자산 구성 (리밸런싱 기준 · 장기보유 제외)':'자산 구성')}
-    ${assets.map(a=>{const cur=cr.total>0?a.ev/cr.total*100:0,diff=cur-a.tgt;return card(`<div style="display:flex;justify-content:space-between;margin-bottom:7px"><div style="display:flex;gap:7px;align-items:center"><div style="width:8px;height:8px;border-radius:2px;background:${a.color}"></div><span style="font-size:14px;font-weight:600;color:${T.text}">${a.name}</span></div><span class="mono" style="font-size:14px;color:${T.text}">${won(a.ev,true)}</span></div><div style="height:4px;background:${T.border};border-radius:2px;overflow:hidden;margin-bottom:5px"><div style="height:100%;width:${Math.min(100,cur).toFixed(1)}%;background:${a.color};border-radius:2px"></div></div><div style="display:flex;justify-content:space-between;font-size:12px"><span class="mono" style="color:${T.text2}">${cur.toFixed(1)}%</span><span style="color:${Math.abs(diff)<3?T.green:Math.abs(diff)>REBAL_BAND?T.red:T.amber}">목표 ${a.tgt}% ${Math.abs(diff)<0.5?'✓':diff>0?'+'+diff.toFixed(1)+'%':diff.toFixed(1)+'%'}</span></div>`);}).join('')}
+    ${assets.map(a=>{const cur=cr.total>0?a.ev/cr.total*100:0,diff=cur-a.tgt;return card(`<div style="display:flex;justify-content:space-between;margin-bottom:7px"><div style="display:flex;gap:7px;align-items:center"><div style="width:8px;height:8px;border-radius:2px;background:${a.color}"></div><span style="font-size:14px;font-weight:600;color:${T.text}">${a.name}</span></div><span class="mono" style="font-size:14px;color:${T.text}">${won(a.ev,true)}</span></div><div style="height:4px;background:${T.border};border-radius:2px;overflow:hidden;margin-bottom:5px"><div style="height:100%;width:${Math.min(100,cur).toFixed(1)}%;background:${a.color};border-radius:2px"></div></div><div style="display:flex;justify-content:space-between;font-size:12px"><span class="mono" style="color:${T.text2}">${cur.toFixed(1)}%</span><span style="color:${Math.abs(diff)<3?T.green:T.amber}">목표 ${a.tgt}% ${Math.abs(diff)<0.5?'✓':diff>0?'+'+diff.toFixed(1)+'%':diff.toFixed(1)+'%'}</span></div>`);}).join('')}
     ${ks.n?`<div onclick="showKeepModal()" class="tap" style="display:flex;justify-content:space-between;align-items:center;background:${T.amber}0F;border:1px solid ${T.amber}33;border-radius:14px;padding:12px 16px;margin-bottom:8px">
       <span style="font-size:13px;color:${T.amber};font-weight:700">🔒 장기보유 ${ks.n}종목 (비중 계산 제외)</span>
       <span class="mono" style="font-size:14px;color:${T.text}">${won(ks.total,true)} ›</span>
@@ -1517,7 +1520,7 @@ function fixedTargetCard(){
   const same=rows.every(([key])=>(t[key]||0)===FIXED_TARGETS[key]);
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.teal}44;margin-bottom:14px;padding:12px 16px">
     <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 고정 목표 비중 운영</div>
-    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 반기(6·12월) 정기 + ±${REBAL_BAND}%p 수시 리밸런싱<br>백테스트상 신호별 비중 변경은 고정 비중 대비 우위가 없어, 위 신호는 참고용입니다.</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱<br>백테스트상 신호별 비중 변경은 고정 비중 대비 우위가 없어, 위 신호는 참고용입니다.</div>
     ${same?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:10px;width:100%;padding:10px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">고정 비중으로 복원하고 리밸런싱으로 이동</button>`}
   </div>`;
 }
@@ -1754,7 +1757,7 @@ function rebalScreen(){
 
     ${secL('목표 비중 설정')}
     <div style="background:${T.teal}0F;border:1px solid ${T.teal}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
-      고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + ±${REBAL_BAND}%p 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)
+      고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)
       <button onclick="applyFixedTargets()" class="tap" style="margin-top:8px;width:100%;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">고정 비중으로 복원</button>
     </div>
     ${card(`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px">
@@ -1765,7 +1768,7 @@ function rebalScreen(){
       <button onclick="saveTargets()" class="tap" style="padding:8px 16px;background:${T.teal};color:#000;border-radius:8px;font-size:12px;font-weight:700">목표 저장</button>
     </div>`)}
 
-    ${secL('자산군 리밸런싱 (6·12월 정기 · ±'+REBAL_BAND+'%p 수시)')}
+    ${secL('자산군 리밸런싱 (6·12월 정기 · 목표 금액 ±'+REBAL_REL+'% 수시)')}
     <div id="rebNow">${renderRebNow(rows,st)}</div>
 
     ${secL('주식 종목 상한 트림 (6·12월 · 동일비중 2배 초과분만)')}
@@ -1793,8 +1796,8 @@ function renderRebNow(rows,st){
     return `<div style="background:${T.card};border-radius:14px;padding:14px;border:1px solid ${T.green}44;color:${T.green};font-size:13px;font-weight:700;text-align:center">✓ 모든 자산군이 목표 비중 구간 내</div>`;
   }
   st=st||rebalStatus();
-  const when=st.level==='band'?`<span style="color:${T.red};font-weight:700">지금 실행 — ±${REBAL_BAND}%p 초과 자산군 있음</span>`
-    :st.level==='due'?`<span style="color:${T.amber};font-weight:700">이번 달(${st.sc.nm}월) 정기 리밸런싱 때 실행</span>`
+  const when=st.level==='due'?`<span style="color:${T.amber};font-weight:700">이번 달(${st.sc.nm}월) 정기 리밸런싱 때 실행</span>`
+    :st.br.length?`<span style="color:${T.text2}">수시 기준(목표 금액 ±${REBAL_REL}%)을 넘은 자산군이 있습니다 — 필요하면 지금 실행</span>`
     :`<span style="color:${T.text3}">지금은 실행 시점 아님 (다음 ${st.sc.nextLabel}) — 아래 금액은 참고용, 그 전까지는 월 적립금으로 맞춤</span>`;
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.border};overflow:hidden;margin-bottom:8px">
     <div style="padding:9px 12px;font-size:11px;line-height:1.5;border-bottom:1px solid ${T.border}">${when}</div>
@@ -1810,30 +1813,26 @@ function renderRebNow(rows,st){
   </div>`;
 }
 
-// 홈: 수시(±5%p 초과)·정기(6·12월 미실행) 리밸런싱이 필요할 때만 표시
+// 홈: 6·12월 정기 리밸런싱 달에 아직 완료 기록이 없을 때만 표시 (수시 기준 초과는 알림 없음)
 function homeRebalBanner(){
-  const st=rebalStatus();if(st.level==='ok')return '';
-  const col=st.level==='band'?T.red:T.amber;
-  const txt=st.level==='band'?`⚠ 수시 리밸런싱 필요 — ${st.br.map(r=>{const d=r.cur-r.w*100;return r.name.replace(/^[^\u3131-\uD79D]+/,'')+' '+(d>0?'+':'')+d.toFixed(1)+'%p';}).join(' · ')}`
-    :`📅 이번 달(${st.sc.nm}월) 정기 리밸런싱 차례`;
-  return `<div onclick="tab='rebal';render()" class="tap" style="background:${col}0F;border:1px solid ${col}44;border-radius:14px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-    <span style="font-size:13px;font-weight:700;color:${col};line-height:1.4">${txt}</span><span style="color:${col}">›</span>
+  const st=rebalStatus();if(st.level!=='due')return '';
+  return `<div onclick="tab='rebal';render()" class="tap" style="background:${T.amber}0F;border:1px solid ${T.amber}44;border-radius:14px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <span style="font-size:13px;font-weight:700;color:${T.amber};line-height:1.4">📅 이번 달(${st.sc.nm}월) 정기 리밸런싱 차례</span><span style="color:${T.amber}">›</span>
   </div>`;
 }
-// 📅 정기(6·12월)·수시(±5%p) 리밸런싱 상태 카드
+// 📅 정기(6·12월) 리밸런싱 일정 카드 — 수시 기준(목표 금액 ±25%) 초과는 알림 없이 참고 한 줄로만 표시
 function rebalScheduleCard(st){
-  st=st||rebalStatus();const sc=st.sc;
-  const col=st.level==='band'?T.red:st.level==='due'?T.amber:T.teal;
-  const title=st.level==='band'?`⚠ 수시 리밸런싱 필요 (목표 ±${REBAL_BAND}%p 초과)`
-    :st.level==='due'?`📅 이번 달 정기 리밸런싱 (${sc.nm}월)`:`📅 다음 정기 리밸런싱 · ${sc.nextLabel}`;
-  const sub=st.level==='band'
-    ?st.br.map(r=>{const d=r.cur-r.w*100;return `${r.name.replace(/^[^\u3131-\uD79D]+/,'')} <span class="mono" style="color:${T.red}">${d>0?'+':''}${d.toFixed(1)}%p</span>`;}).join(' · ')
-    :`${st.level==='due'?'이번 달 말까지 실행':'D-'+sc.dday} · 현재 최대 이탈 <span class="mono">${st.maxDev.name?st.maxDev.name.replace(/^[^\u3131-\uD79D]+/,'')+' '+(st.maxDev.d>0?'+':'')+st.maxDev.d.toFixed(1)+'%p':'—'}</span>`;
+  st=st||rebalStatus();const sc=st.sc,due=st.level==='due',col=due?T.amber:T.teal;
+  const title=due?`📅 이번 달 정기 리밸런싱 (${sc.nm}월)`:`📅 다음 정기 리밸런싱 · ${sc.nextLabel}`;
+  const nm=r=>r.name.replace(/^[^\u3131-\uD79D]+/,'');
+  const band=st.br.length
+    ?`수시 기준(목표 금액 ±${REBAL_REL}%) 넘은 자산군: ${st.br.map(r=>{const d=relDev(r);return `${nm(r)} <span class="mono">${d>0?'+':''}${d.toFixed(0)}%</span>`;}).join(' · ')}`
+    :`모든 자산군이 수시 기준(목표 금액 ±${REBAL_REL}%) 이내`;
   return `<div style="background:${col}0F;border:1px solid ${col}44;border-radius:14px;padding:12px 16px;margin-bottom:8px">
     <div style="font-size:14px;font-weight:700;color:${col}">${title}</div>
-    <div style="font-size:12px;color:${T.text2};margin-top:4px;line-height:1.5">${sub}</div>
-    ${st.level==='band'&&sc.due?`<div style="font-size:12px;color:${T.amber};margin-top:2px">이번 달은 정기 리밸런싱 달(${sc.nm}월)이기도 합니다</div>`:''}
-    <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">정기: <b>6·12월 말</b> 자산군 비중 맞춤 + 주식 종목 상한 트림 · 수시: 월말 점검 때 어느 자산군이든 목표 <b>±${REBAL_BAND}%p</b> 초과 시<br>12월은 결제일 기준 연내 반영되도록 하순 초에 실행 · 해외주식 손실 종목을 함께 팔면 같은 해 이익과 통산</div>
+    <div style="font-size:12px;color:${T.text2};margin-top:4px;line-height:1.5">${due?'이번 달 말까지 실행':'D-'+sc.dday}</div>
+    <div style="font-size:12px;color:${T.text2};margin-top:2px;line-height:1.5">${band}</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">정기: <b>6·12월 말</b> 자산군 비중 맞춤 + 주식 종목 상한 트림 (6·12월에만 홈 알림)<br>수시: 자산군 금액이 목표 금액의 <b>±${REBAL_REL}%</b>를 넘으면(예: 목표 100만원 → 125만원·75만원) 직접 판단해 실행 · 알림 없음<br>12월은 결제일 기준 연내 반영되도록 하순 초에 실행 · 해외주식 손실 종목을 함께 팔면 같은 해 이익과 통산</div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px">
       <span style="font-size:11px;color:${T.text3}">마지막 기록: <span class="mono" style="color:${T.text2}">${sc.last||'없음'}</span></span>
       <button onclick="markRebalDone()" class="tap" style="padding:7px 12px;background:${col};color:#000;border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap">✓ 오늘 완료 기록</button>
@@ -1998,7 +1997,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.3</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.4</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 

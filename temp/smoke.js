@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='5.3','버전 5.3, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='5.4','버전 5.4, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -128,7 +128,7 @@ ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목),
 // 7b. v5.1 마이그레이션: 기존 사용자 워치리스트에 해외 시드 종목 비파괴적으로 병합
 const migratedOnce=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
   watchlist:[{id:'old1',name:'내가 추가한 종목',code:'999999'}]},txns:[],targets:{},switching:{}})`);
-ok(migratedOnce.ver==='5.3','마이그레이션 후 ver 5.3, got '+migratedOnce.ver);
+ok(migratedOnce.ver==='5.4','마이그레이션 후 ver 5.4, got '+migratedOnce.ver);
 ok(migratedOnce.holdings.watchlist.some(h=>h.name==='내가 추가한 종목'),'기존 워치리스트 항목 보존');
 ok(migratedOnce.holdings.watchlist.filter(h=>h.ticker==='NVDA').length===1,'해외 시드(NVDA) 1건 병합');
 const seed=run('OVERSEAS_WATCHLIST_SEED');
@@ -203,10 +203,17 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("migratePortfolio(JSON.parse(JSON.stringify(portfolio))).lastRebal")===run('portfolio.lastRebal'),'마이그레이션·백업 후 완료 기록 유지');
   run("delete portfolio.lastRebal");
 
-  // 밴드: INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/30/10) → ±5%p 초과 국내·해외·금·코인
+  // 수시 기준(v5.4): 목표 금액 대비 ±25%. INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/30/10) → 전 자산군 초과
   const br=run("bandBreaches().map(r=>r.k)");
-  ok(br.join()==='kr,us,gold,crypto','±5%p 초과 자산군: '+br.join());
-  ok(run("rebalStatus().level")==='band','밴드 초과 시 상태 band');
+  ok(br.join()==='kr,us,bonds,gold,crypto','목표 금액 ±25% 초과 자산군: '+br.join());
+  ok(Math.round(run("relDev(rebalRows().find(r=>r.k==='crypto'))"))===124,'코인 목표 대비 +124%');
+  const mk=(ev,tval)=>`bandBreaches([{k:'x',name:'x',ev:${ev},tval:${tval},w:0.1,cur:0}]).length`;
+  ok(run(mk(125,100))===0&&run(mk(76,100))===0,'100만원 → 125만원·76만원은 기준 이내(경계 포함)');
+  ok(run(mk(126,100))===1&&run(mk(74,100))===1,'100만원 → 126만원·74만원은 수시 기준 초과');
+  ok(run(mk(5,0))===0,'목표 0% 자산군은 수시 기준 판단 제외');
+  // 알림은 6·12월 정기만 — 수시 기준 초과는 상태(level)·홈 배너에 영향 없음
+  ok(run("rebalStatus().level")===(run("rebalSchedule().due")?'due':'ok'),'수시 초과여도 상태는 정기 일정만 반영');
+  ok(!run("homeRebalBanner()").includes('수시'),'홈 배너에 수시 알림 없음');
   run("portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3}");
   ok(run("bandBreaches().length")===0,'목표=현재면 밴드 초과 없음');
   run("portfolio.targets=Object.assign({},FIXED_TARGETS)");
@@ -258,10 +265,13 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("rebalScreen()").includes('주식 종목 상한 트림')&&run("rebalScreen()").includes('✂ 에스티팜')===false,'리밸런싱 화면 렌더(에스티팜 🔒이면 트림 표에 없음)');
   run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
   const scr=run("rebalScreen()");
-  ok(scr.includes('✂ 에스티팜')&&scr.includes('수시 리밸런싱 필요'),'리밸런싱 화면: 수시 경보 + 에스티팜 트림 표시');
-  ok(run("homeRebalBanner()").includes('수시 리밸런싱 필요'),'홈 경보 배너');
-  run("portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3}");
-  ok(run("homeRebalBanner()")===''||run("rebalSchedule().due"),'밴드 내·정기 달 아님 → 홈 배너 없음');
+  ok(scr.includes('✂ 에스티팜')&&scr.includes('수시 기준(목표 금액 ±25%) 넘은 자산군')&&!scr.includes('수시 리밸런싱 필요'),'리밸런싱 화면: 수시 초과는 참고 문구(경보 아님) + 에스티팜 트림 표시');
+  // 홈 배너: 6·12월 미기록일 때만. 이번 달을 완료로 기록하면 사라짐
+  run("portfolio.lastRebal=localYmd(new Date())");
+  ok(run("homeRebalBanner()")==='','이번 달 완료 기록 → 홈 배너 없음');
+  run("delete portfolio.lastRebal");
+  ok(run("rebalSchedule().due")?run("homeRebalBanner()").includes('정기 리밸런싱 차례'):run("homeRebalBanner()")==='','6·12월 미기록일 때만 홈 배너');
+  ok(run("rebalScheduleCard({rows:rebalRows(),br:bandBreaches(),level:'due',sc:rebalSchedule(new Date(2026,5,10))})").includes('이번 달 정기 리밸런싱 (6월)'),'6월 정기 카드');
 }
 
 // 8. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
