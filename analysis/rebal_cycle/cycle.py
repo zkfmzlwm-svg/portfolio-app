@@ -5,9 +5,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from static import *                                   # X(월수익률+rf), A
 W = np.array([20, 30, 10, 30, 10]) / 100               # 앱 고정 목표 20/30/10/30/10
 
-def sim(Rx, months=(), band=None, cost=.003, contrib=0.0, v0=1.0):
+def sim(Rx, months=(), band=None, rel=None, cost=.003, contrib=0.0, v0=1.0):
     """months: 리밸런싱 실행 월(1~12) — 해당 월말에 목표비중으로 전량 재조정
        band: 월말 점검 시 |현재−목표| 최대값이 band(비중 %p 소수) 넘으면 수시 리밸런싱
+       rel: 월말 점검 시 자산군 금액이 목표 금액 대비 ±rel(상대, 0.25 = 100만원→125만원·75만원) 넘으면 수시 리밸런싱
        contrib: 월 적립액(초기자산 대비) — 앱처럼 목표 대비 부족액 비례로 부족 자산군에만 투입
        반환: 시간가중 월수익률, 연평균 회전율, 리밸런싱 횟수, 최대 이탈(%p)"""
     r = Rx[A].values; per = Rx.index; m0 = ~np.isnan(r[0]); h = np.where(m0, W, 0) / W[m0].sum() * v0; out = []; traded = 0; n = 0; dev = 0
@@ -19,7 +20,8 @@ def sim(Rx, months=(), band=None, cost=.003, contrib=0.0, v0=1.0):
             add = need / need.sum() * min(c, need.sum()) if need.sum() > 0 else 0; h = h + add; c -= np.sum(add)
             if c > 1e-12: h = h + w * c
         cur = h / h.sum(); dev = max(dev, np.abs(cur - w).max())
-        if per[t].month in months or (band is not None and np.abs(cur - w).max() > band):
+        hit_rel = rel is not None and (np.abs(cur[w > 0] / w[w > 0] - 1) > rel).any()
+        if per[t].month in months or (band is not None and np.abs(cur - w).max() > band) or hit_rel:
             tv = np.abs(cur - w).sum() / 2 * h.sum(); traded += tv / h.sum(); n += 1
             h = w * (h.sum() - tv * cost)
     yrs = len(r) / 12
@@ -33,6 +35,8 @@ def row(s, rfs, extra):
 PLANS = {'월간': dict(months=range(1, 13)), '분기(3·6·9·12)': dict(months=(3, 6, 9, 12)),
          '반기(6·12)': dict(months=(6, 12)), '연간(12)': dict(months=(12,)),
          '반기(6·12)+수시±5%p': dict(months=(6, 12), band=.05), '반기(6·12)+수시±7.5%p': dict(months=(6, 12), band=.075),
+         '반기(6·12)+수시 목표대비±20%': dict(months=(6, 12), rel=.20), '반기(6·12)+수시 목표대비±25%': dict(months=(6, 12), rel=.25),
+         '반기(6·12)+수시 목표대비±30%': dict(months=(6, 12), rel=.30),
          '밴드만 ±5%p': dict(band=.05), '밴드만 ±10%p': dict(band=.10)}
 
 if __name__ == '__main__':

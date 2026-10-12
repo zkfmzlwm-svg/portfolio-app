@@ -31,7 +31,7 @@ for(const t of['home','holdings','switching','rebal']){
 run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3};portfolio.lastRebal='2026-06-28'");
 for(const t of['home','rebal']){run("tab='"+t+"';render()");const out=els.app._html;
   for(const bad of['undefined','NaN','function ','[object']){if(out.includes(bad)){console.log('✗ ok-state',t,'contains',bad);issues++;}}}
-{const card=run("rebalScheduleCard({rows:rebalRows(),br:[],maxDev:{d:0,name:''},level:'due',sc:rebalSchedule(new Date(2026,11,10))})");
+{const card=run("rebalScheduleCard({rows:rebalRows(),br:[],level:'due',sc:rebalSchedule(new Date(2026,11,10))})");
  if(!card.includes('이번 달 정기 리밸런싱 (12월)')||/undefined|NaN/.test(card)){console.log('✗ due card');issues++;}}
 run("showKeepModal()");
 for(const bad of['undefined','NaN','[object']){if((els['modal-root']._html||'').includes(bad)){console.log('✗ keep modal contains',bad);issues++;}}
