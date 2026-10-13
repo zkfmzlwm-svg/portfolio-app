@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v5.5</title>
+<title>포트폴리오 v6.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -200,6 +200,22 @@ const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrde
 const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
 const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
 
+// ── 단타 탭 기본값 (v6.0) — 근거: analysis/daytrade/ (국내 2014-07~2026-10 일봉 백테스트) ──
+// · 당일 종가 청산은 비용 후 수익이 거의 없음(ETF 2020~ CAGR +2~5%, 개별주 중앙값 −14%) → 기본은 다음날 시가 청산(1박)
+// · 개별주는 매도 거래세 0.20%가 거래당 총수익(+0.16%)보다 커서 손실 → 국내 주식형 ETF(거래세·매매차익 비과세)만 기본 대상
+// · 레버리지·인버스 ETF는 매매차익 배당소득세 15.4% → 제외
+// · 비레버리지 ETF 4종, k=0.7·필터 없음·다음날 시가 청산: 2020~ 검증 CAGR +15.1%, Sharpe 1.40, MDD −12% (보유 +18.9%, 0.70, −40%)
+// · 목표가보다 0.1% 비싸게 사면 CAGR이 절반, 0.2%면 0 → 모의매매에 '감지가'를 남겨 실제 슬리피지를 잰다
+const DT_DEFAULT={
+  codes:[{code:'069500',name:'KODEX 200',etf:true},{code:'229200',name:'KODEX 코스닥150',etf:true},
+         {code:'091160',name:'KODEX 반도체',etf:true},{code:'305720',name:'KODEX 2차전지산업',etf:true}],
+  k:0.7,filt:'none',exit:'nextopen',amt:1000000,fee:0.015,
+  start:null,paper:[],done:{},obs:{},orders:[]
+};
+const DT_TAX=0.20;      // 개별주 매도 증권거래세 %(2026, 코스피는 농특세 포함) — 국내 ETF는 면제
+const DT_SLIP_WARN=0.2; // 목표가 대비 % — 이보다 비싸게 사면 백테스트상 기대수익이 0이 됨
+const DT_BT_AVG=0.207;  // 백테스트 거래당 평균 순수익 %(ETF 4종, k=0.7, 2020~)
+
 // 워치리스트 — 해외(미국) 시드. cur·targetPrice는 추정치(placeholder)로, 앱 실행 시 자동 업데이트가
 // 네이버 해외주식 컨센서스로 즉시 덮어쓴다. eps·indPer는 업종 PER 비교용 고정값(자동 갱신 안 됨 — 국내
 // 종목도 동일 방식)이라 수치는 대략적인 추정이며, 정확한 값이 필요하면 종목 수정에서 직접 보정하면 된다.
@@ -303,7 +319,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'5.5'
+  ver:'6.0'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -648,7 +664,12 @@ function migratePortfolio(p){
   // v5.4: 수시 기준을 목표 금액 ±25%로 변경, 알림은 6·12월 정기만 — 데이터 변환 불필요
   // v5.5: 목표비중 금 30→25·코인 10→15로 변경(사용자 선택) — 저장된 목표비중을 새 고정 비중으로 1회 교체
   if(vn<5.5)p.targets=Object.assign({},FIXED_TARGETS);
-  p.ver='5.5';
+  // v6.0: 단타 탭(변동성 돌파 신호 + 모의매매) 상태 추가 — 없으면 기본값, 모의매매 시작일은 처음 실행한 날
+  if(!p.dt)p.dt=JSON.parse(JSON.stringify(DT_DEFAULT));
+  ['paper','orders','codes'].forEach(k=>{if(!Array.isArray(p.dt[k]))p.dt[k]=[];});
+  ['done','obs'].forEach(k=>{if(!p.dt[k]||typeof p.dt[k]!=='object')p.dt[k]={};});
+  if(!p.dt.start)p.dt.start=kstYmd();
+  p.ver='6.0';
   return p;
 }
 
@@ -1260,6 +1281,7 @@ function runWatchlistAlgorithm(){
 // MainActivity가 WebView 페이지 로드 완료 직후 이 함수만 호출한다(앱을 열 때마다 1회).
 async function autoUpdateOnLaunch(){
   try{ await updateAllPrices(); }catch(e){}
+  try{ await dtRefresh(true); }catch(e){}   // 단타 모의매매 장부를 앱 열 때마다 따라잡기
 }
 
 // ── 종목 검색 (v3.5: 네이버 통합검색 front-api + 야후 백업) ──
@@ -1913,6 +1935,379 @@ function analysisScreen(){
   </div>`;
 }
 
+// ── 화면: 단타 (v6.0) — 변동성 돌파 ──
+// A 모의매매: 시작일 이후 일봉으로 돌파를 날짜순으로 확정 기록(앱을 안 연 날도 다음 실행 때 소급, append-only).
+// B 신호·주문: 장중 15초마다 시세를 갱신해 돌파를 표시. 주문은 사용자가 ⚡ 버튼으로 확인 후 직접 전송(자동 주문 없음).
+// 단타 기록·주문은 포트폴리오 보유·리밸런싱에 반영되지 않는다.
+function kstNow(){return new Date(Date.now()+9*3600e3);}   // UTC 필드로 읽으면 한국 시간
+function kstYmd(d){return (d||kstNow()).toISOString().slice(0,10);}
+function kstHm(d){d=d||kstNow();return d.getUTCHours()*100+d.getUTCMinutes();}
+function dtAddDays(ymd,n){const d=new Date(ymd+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
+// KRX 호가단위(2023-01~ 코스피·코스닥 공통, ETF는 2천원 이상 5원)
+function krTick(p,etf){if(etf)return p<2000?1:5;return p<2000?1:p<5000?5:p<20000?10:p<50000?50:p<200000?100:p<500000?500:1000;}
+function ceilTick(p,etf){const t=krTick(p,etf);return Math.ceil(p/t-1e-9)*t;}
+const numK=s=>{const v=parseFloat(String(s==null?'':s).replace(/,/g,''));return isNaN(v)?0:v;};
+
+function dtState(){
+  if(!portfolio.dt){portfolio.dt=JSON.parse(JSON.stringify(DT_DEFAULT));portfolio.dt.start=kstYmd();}
+  return portfolio.dt;
+}
+const dtCache={candles:{},from:null,day:null,fetchHm:{},rt:{},rtAt:0,series:{},sig:{},open:{},seenWait:{},newHit:null,busy:false,err:null};
+let dtSub='signal',dtTimer=null;
+
+// 하루 i의 돌파 판정 — 목표가 = 당일 시가 + k × 전일(고가−저가), 호가단위 올림. 필터는 시가 > 전일까지 이동평균
+function dtSignalAt(cs,i,cfg,etf){
+  if(i<1||!cs[i]||!cs[i-1])return null;
+  const p=cs[i-1],t=cs[i],rng=p.h-p.l;
+  if(!(rng>0)||!(t.o>0))return null;
+  const tgt=ceilTick(t.o+cfg.k*rng,etf);
+  let ma=null,pass=true;
+  if(cfg.filt==='ma5'||cfg.filt==='ma20'){
+    const n=cfg.filt==='ma5'?5:20;
+    if(i<n)return null;
+    ma=cs.slice(i-n,i).reduce((s,x)=>s+x.c,0)/n;
+    pass=t.o>ma;
+  }
+  return {d:t.d,o:t.o,rng,tgt,ma,pass,hit:pass&&t.h>=tgt};
+}
+// 순수익률: 매수·매도 수수료 + (개별주만) 매도 거래세
+function dtNetRet(ent,xp,etf,feePct){const f=(feePct||0)/100,tax=etf?0:DT_TAX/100;return xp*(1-f-tax)/(ent*(1+f))-1;}
+// A. 모의매매 — 종목별로 시작일 이후 날짜를 순서대로 확정. 반환: 아직 청산 전인 포지션
+function dtProcessPaper(dt,m,cs,today,afterClose){
+  const open=[];
+  for(let i=1;i<cs.length;i++){
+    const day=cs[i];
+    if(day.d<dt.start||day.d<=(dt.done[m.code]||''))continue;
+    const final=day.d<today||afterClose;
+    const s=dtSignalAt(cs,i,dt,m.etf);
+    if(!s||!s.hit){if(final){dt.done[m.code]=day.d;continue;}break;}
+    const key=day.d+'|'+m.code,ob=dt.obs[key];
+    const ent=Math.max(s.tgt,day.o)+krTick(s.tgt,m.etf);   // 백테스트와 같게 목표가 + 1호가 체결 가정
+    let xd=null,xp=null;
+    if(dt.exit==='close'){if(final){xd=day.d;xp=day.c;}}
+    else if(cs[i+1]&&cs[i+1].o>0){xd=cs[i+1].d;xp=cs[i+1].o;}
+    if(!xp){open.push({key,d:day.d,code:m.code,name:m.name,etf:!!m.etf,tgt:s.tgt,ent,obs:ob?ob.px:null});break;}
+    if(!dt.paper.some(x=>x.key===key))
+      dt.paper.push({key,d:day.d,code:m.code,name:m.name,etf:!!m.etf,k:dt.k,filt:dt.filt,exit:dt.exit,amt:dt.amt,
+        tgt:s.tgt,ent,xd,xp,ret:dtNetRet(ent,xp,m.etf,dt.fee),obs:ob?ob.px:null});
+    dt.done[m.code]=day.d;
+  }
+  return open;
+}
+function dtStats(list){
+  const n=list.length;if(!n)return{n:0};
+  const ob=list.filter(x=>x.obs>0);
+  return{n,win:list.filter(x=>x.ret>0).length/n,avg:list.reduce((s,x)=>s+x.ret,0)/n*100,
+    pnl:list.reduce((s,x)=>s+x.ret*(x.amt||0),0),
+    slip:ob.length?ob.reduce((s,x)=>s+(x.obs/x.tgt-1),0)/ob.length*100:null,nObs:ob.length};
+}
+// 실시간 시세로 오늘 봉을 덮어쓰거나 추가 (시가 0 = 장 시작 전, 다른 날짜 = 휴장)
+function dtMergeToday(cs,r,today){
+  cs=cs.slice();
+  if(r&&r.o>0&&r.cur>0&&String(r.t).slice(0,10)===today){
+    const bar={d:today,o:r.o,h:Math.max(r.h,r.cur),l:r.l>0?Math.min(r.l,r.cur):r.cur,c:r.cur};
+    if(cs.length&&cs[cs.length-1].d===today)cs[cs.length-1]=bar;else cs.push(bar);
+  }
+  return cs;
+}
+async function dtFetchCandles(code,from){
+  const ymd=s=>s.replace(/-/g,'');
+  const arr=await nativeGet('https://api.stock.naver.com/chart/domestic/item/'+code+'/day?startDateTime='+ymd(from)+'0000&endDateTime='+ymd(kstYmd())+'2359');
+  if(!Array.isArray(arr))throw new Error('일봉 응답 오류');
+  return arr.map(x=>({d:String(x.localDate).replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3'),o:+x.openPrice,h:+x.highPrice,l:+x.lowPrice,c:+x.closePrice}))
+    .filter(x=>x.o>0&&x.h>0&&x.l>0&&x.c>0).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+}
+async function dtFetchRealtime(codes){
+  const d=await nativeGet('https://polling.finance.naver.com/api/realtime/domestic/stock/'+codes.join(','));
+  const out={};
+  ((d&&d.datas)||[]).forEach(x=>{out[x.itemCode]={o:numK(x.openPrice),h:numK(x.highPrice),l:numK(x.lowPrice),cur:numK(x.closePrice),status:x.marketStatus||'',t:x.localTradedAt||''};});
+  return out;
+}
+// 캐시된 일봉 + 실시간 시세로 신호·감지가·모의매매를 다시 계산 (네트워크 없음)
+function dtCompute(){
+  const dt=dtState(),n=kstNow(),today=kstYmd(n),hm=kstHm(n),hmS=n.toISOString().slice(11,16),hits=[];
+  const mark=()=>JSON.stringify([dt.paper.length,dt.done,Object.keys(dt.obs).length,dt.orders.length]),before=mark();
+  dt.codes.forEach(m=>{
+    const r=dtCache.rt[m.code],fresh=!!(r&&r.cur>0&&String(r.t).slice(0,10)===today);
+    const cs=dtMergeToday(dtCache.candles[m.code]||[],r,today);
+    dtCache.series[m.code]=cs;
+    const i=cs.length-1,sig=i>=1&&cs[i].d===today?dtSignalAt(cs,i,dt,m.etf):null;
+    dtCache.sig[m.code]=sig;
+    // 감지가: 이번 실행 중 '대기'를 본 뒤 돌파한 것만 기록(앱을 늦게 열어 이미 돌파돼 있던 건 슬리피지 측정에서 제외)
+    const key=today+'|'+m.code;
+    if(sig&&fresh){
+      if(!sig.hit)dtCache.seenWait[m.code]=today;
+      else if(dtCache.seenWait[m.code]===today&&!dt.obs[key]){dt.obs[key]={px:r.cur,hm:hmS};hits.push(m.name);}
+    }
+    // 오늘 봉은 15:40 이후 + (실시간 시세 또는 마감 후 받은 일봉)이 있을 때만 확정
+    const afterClose=hm>=1540&&(fresh||(dtCache.fetchHm[m.code]||0)>=1540);
+    dtCache.open[m.code]=dtProcessPaper(dt,m,cs,today,afterClose);
+  });
+  const cut=dtAddDays(today,-10);
+  Object.keys(dt.obs).forEach(k=>{if(k.slice(0,10)<cut)delete dt.obs[k];});
+  if(dt.orders.length>200)dt.orders=dt.orders.slice(-200);
+  if(hits.length){
+    const nh=dtCache.newHit&&dtCache.newHit.d===today?dtCache.newHit:{d:today,names:[]};
+    nh.names=nh.names.concat(hits);nh.hm=hmS;dtCache.newHit=nh;
+    try{navigator.vibrate&&navigator.vibrate([200,100,200]);}catch(e){}
+  }
+  if(mark()!==before)save();
+}
+async function dtRefresh(silent){
+  const dt=dtState();
+  if(dtCache.busy||!dt.codes.length)return;
+  dtCache.busy=true;dtCache.rtAt=Date.now();
+  if(!silent&&tab==='daytrade')dtRender();
+  try{
+    const today=kstYmd(),codes=dt.codes.map(m=>m.code);
+    const from=dtAddDays(dt.start<today?dt.start:today,-45);   // MA20·전일 범위용 여유
+    if(dtCache.day!==today||dtCache.from!==from){dtCache.candles={};dtCache.fetchHm={};dtCache.day=today;dtCache.from=from;}
+    const need=codes.filter(c=>!dtCache.candles[c]);
+    if(need.length){
+      const res=await Promise.all(need.map(c=>dtFetchCandles(c,from).catch(()=>null)));
+      const hm=kstHm();
+      need.forEach((c,i)=>{if(res[i]){dtCache.candles[c]=res[i];dtCache.fetchHm[c]=hm;}});
+    }
+    try{dtCache.rt=await dtFetchRealtime(codes);}catch(e){dtCache.rt={};}
+    dtCompute();
+    const miss=codes.filter(c=>!dtCache.candles[c]).length;
+    dtCache.err=miss?miss+'종목 일봉을 불러오지 못했습니다':Object.keys(dtCache.rt).length?null:'실시간 시세를 불러오지 못했습니다';
+  }catch(e){dtCache.err=e.message;}
+  finally{dtCache.busy=false;}
+  if(tab==='daytrade')dtRender();
+}
+function dtRender(){
+  const a=document.activeElement;
+  if(a&&/^dt/.test(a.id||''))return;   // 설정 입력 중이면 다시 그리지 않음
+  const sc=document.getElementById('dtScroll'),top=sc?sc.scrollTop:0;
+  render();
+  const sc2=document.getElementById('dtScroll');if(sc2&&top)sc2.scrollTop=top;
+}
+// 단타 탭이 보이는 동안 장중(평일 08:30~15:45)에만 15초마다 갱신
+function dtOnShow(){
+  if(!dtTimer&&typeof setInterval==='function')dtTimer=setInterval(dtTick,15000);
+  if(window.HttpBridge&&window.HttpBridge.get&&!dtCache.busy&&Date.now()-dtCache.rtAt>60000)dtRefresh(true);
+}
+function dtTick(){
+  if(tab!=='daytrade'){clearInterval(dtTimer);dtTimer=null;return;}
+  const n=kstNow(),wd=n.getUTCDay(),hm=kstHm(n);
+  if(wd>0&&wd<6&&hm>=830&&hm<=1545)dtRefresh(true);
+}
+function dtView(m){
+  const cs=dtCache.series[m.code]||[],r=dtCache.rt[m.code],sig=dtCache.sig[m.code];
+  if(!cs.length)return{st:'nodata'};
+  const last=cs[cs.length-1],cur=r&&r.cur>0?r.cur:last.c;
+  const rng=last.h-last.l;
+  if(!sig)return{st:'pre',cur,rng};   // 장 시작 전·휴장 → 다음 목표가 = 시가 + k × 최근 거래일 범위
+  if(!sig.pass)return{st:'filtered',sig,cur,rng};
+  if(sig.hit)return{st:'hit',sig,cur,rng,slip:(cur/sig.tgt-1)*100};
+  return{st:'wait',sig,cur,rng,dist:(sig.tgt/cur-1)*100};
+}
+function dtMarketLabel(){
+  const r=Object.values(dtCache.rt)[0],n=kstNow(),wd=n.getUTCDay(),hm=kstHm(n);
+  if(r&&r.status==='OPEN')return{t:'장중',c:T.green};
+  if(wd===0||wd===6)return{t:'주말 휴장',c:T.text3};
+  if(hm<900)return{t:'장 시작 전',c:T.amber};
+  if(hm>=1530)return{t:'장 마감',c:T.text2};
+  return{t:r?'휴장':'시세 없음',c:T.text3};
+}
+
+function dtScreen(){
+  const dt=dtState(),mk=dtMarketLabel();
+  const subs=[{id:'signal',l:'신호·주문'},{id:'paper',l:'모의매매'},{id:'cfg',l:'설정'}];
+  const upd=dtCache.rtAt?new Date(dtCache.rtAt+9*3600e3).toISOString().slice(11,16):'—';
+  const filtL={none:'필터 없음',ma5:'MA5 필터',ma20:'MA20 필터'}[dt.filt]||dt.filt;
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="display:flex;padding:10px 16px;gap:8px;background:${T.bg2};border-bottom:1px solid ${T.border}">
+      ${subs.map(s=>`<button onclick="dtSub='${s.id}';render()" class="tap" style="flex:1;padding:8px;border-radius:20px;border:1px solid ${dtSub===s.id?T.teal:T.border};background:${dtSub===s.id?T.teal+'22':'transparent'};color:${dtSub===s.id?T.teal:T.text2};font-size:12px;font-weight:${dtSub===s.id?700:400}">${s.l}</button>`).join('')}
+    </div>
+    <div id="dtScroll" class="scr fade" style="flex:1;padding:0 16px 32px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0 2px">
+        <div style="font-size:12px;color:${T.text3}"><span style="color:${mk.c};font-weight:700">● ${mk.t}</span> · 갱신 ${upd}${dtCache.busy?` <span class="spin" style="color:${T.teal}">↻</span>`:''}</div>
+        <button onclick="dtRefresh(false)" class="tap" style="padding:6px 12px;background:${T.bg3};color:${T.teal};border-radius:8px;font-size:12px;font-weight:700">↻ 새로고침</button>
+      </div>
+      <div style="font-size:11px;color:${T.text3}">변동성 돌파 · k ${dt.k} · ${filtL} · ${dt.exit==='close'?'당일 종가 청산':'다음날 시가 청산'} · 1회 ${won(dt.amt,true)}원</div>
+      ${dtCache.err?`<div style="font-size:12px;color:${T.red};margin-top:8px">⚠ ${esc(dtCache.err)}</div>`:''}
+      ${dtSub==='paper'?dtPaperView(dt):dtSub==='cfg'?dtCfgView(dt):dtSignalView(dt)}
+    </div>
+  </div>`;
+}
+function dtBadge(t,c){return `<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${c}22;color:${c};font-weight:700;white-space:nowrap">${t}</span>`;}
+function dtSignalCard(m,dt){
+  const v=dtView(m);
+  let badge=dtBadge('데이터 없음',T.text3),body='',act='';
+  if(v.st==='pre'){badge=dtBadge('시가 대기',T.amber);body=`다음 목표가 = 시가 + <b>${won(Math.round(dt.k*v.rng))}</b>원 (최근 거래일 범위 ${won(v.rng)} × ${dt.k}) · 현재 ${won(v.cur)}`;}
+  else if(v.st==='filtered'){badge=dtBadge('필터 제외',T.text3);body=`시가 ${won(v.sig.o)} ≤ ${dt.filt.toUpperCase()} ${won(Math.round(v.sig.ma))} · 오늘은 매수하지 않음`;}
+  else if(v.st==='wait'){
+    badge=dtBadge('대기',T.blue);
+    const prog=Math.max(0,Math.min(100,(v.cur-v.sig.o)/(v.sig.tgt-v.sig.o)*100));
+    body=`목표가 <b style="color:${T.text}">${won(v.sig.tgt)}</b> · 현재 ${won(v.cur)} · 남은 <b>${pct(v.dist)}</b>
+      <div style="height:5px;background:${T.bg3};border-radius:3px;margin-top:6px;overflow:hidden"><div style="height:100%;width:${prog.toFixed(0)}%;background:${T.blue}"></div></div>`;
+  }else if(v.st==='hit'){
+    const warn=v.slip>DT_SLIP_WARN;
+    badge=dtBadge('돌파 ✓',T.green);
+    body=`목표가 <b style="color:${T.text}">${won(v.sig.tgt)}</b> · 현재 ${won(v.cur)} <span style="color:${warn?T.red:T.text2}">(목표가 대비 ${pct(v.slip)})</span>${warn?`<div style="color:${T.red};margin-top:4px">목표가보다 ${DT_SLIP_WARN}% 넘게 올라 백테스트상 기대수익이 0인 구간입니다</div>`:''}`;
+    act=btn('⚡ 매수 주문',`dtOrder('${m.code}','buy')`,T.green,'margin-top:10px;padding:10px');
+  }
+  if(v.sig&&kstHm()>=1530)body+=`<div style="color:${T.text3};margin-top:4px">다음 거래일 목표가 = 시가 + ${won(Math.round(dt.k*v.rng))}원</div>`;
+  return card(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div><span style="font-size:15px;font-weight:700;color:${T.text}">${esc(m.name)}</span> <span class="mono" style="font-size:11px;color:${T.text3}">${m.code}</span>${m.etf?'':` <span style="font-size:10px;color:${T.red}">개별주·거래세 ${DT_TAX}%</span>`}</div>${badge}</div>
+    ${body?`<div style="font-size:12px;color:${T.text2};margin-top:6px;line-height:1.6">${body}</div>`:''}${act}`);
+}
+function dtSignalView(dt){
+  const today=kstYmd(),nh=dtCache.newHit&&dtCache.newHit.d===today?dtCache.newHit:null;
+  const exits=[].concat(...Object.values(dtCache.open).map(x=>x||[]));
+  const recent=dt.orders.filter(o=>o.d>=dtAddDays(today,-3)).slice().reverse();
+  const exitCard=p=>{
+    const r=dtCache.rt[p.code],cur=r&&r.cur>0?r.cur:null;
+    const when=dt.exit==='close'?'오늘 15:20 전까지 매도 (종가 청산)':p.d===today?'다음 거래일 08:30~09:00 시장가 매도 → 09:00 시가 체결':'지금 시장가 매도 → 09:00 시가 체결 (장중이면 즉시 체결)';
+    return card(`<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700;color:${T.text}">${esc(p.name)}</span>${dtBadge(p.d.slice(5)+' 돌파',T.amber)}</div>
+      <div style="font-size:12px;color:${T.text2};margin-top:6px;line-height:1.6">모의 진입 ${won(p.ent)}${cur?` · 현재 ${won(cur)} <span style="color:${pctC(cur-p.ent)}">(${pct((cur/p.ent-1)*100)})</span>`:''}<br>${when}</div>
+      ${btn('매도 주문',`dtOrder('${p.code}','sell')`,T.red,'margin-top:10px;padding:10px')}`);
+  };
+  return `${nh?`<div style="background:${T.green}18;border:1px solid ${T.green}55;border-radius:12px;padding:10px 14px;margin-top:10px;font-size:13px;color:${T.green};font-weight:700">⚡ 돌파 감지 ${nh.hm} — ${nh.names.map(esc).join(', ')}</div>`:''}
+    ${secL('오늘 신호')}
+    ${dt.codes.length?dt.codes.map(m=>dtSignalCard(m,dt)).join(''):card(`<div style="font-size:13px;color:${T.text2}">설정에서 종목을 추가하세요.</div>`)}
+    ${exits.length?secL('청산 대상 (모의매매 보유 기준)')+exits.map(exitCard).join(''):''}
+    ${recent.length?secL('최근 주문 (3일)')+card(recent.map(o=>`<div style="display:flex;justify-content:space-between;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px solid ${T.border}"><span style="color:${o.side==='buy'?T.green:T.red};font-weight:700">${o.side==='buy'?'매수':'매도'}</span><span style="color:${T.text};flex:1">${esc(o.name)}</span><span class="mono" style="color:${T.text2}">${o.qty}주 · ${o.price?won(o.price):'시장가'}</span><span class="mono" style="color:${T.text3}">${o.d.slice(5)} ${o.hm}</span></div>`).join('')+`<div style="font-size:10px;color:${T.text3};margin-top:6px">체결 여부는 증권사 앱에서 확인하세요.</div>`):''}
+    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:12px">· 앱은 자동으로 주문하지 않습니다. ⚡ 버튼에서 수량·가격을 확인하고 직접 전송하세요.<br>· 목표가보다 ${DT_SLIP_WARN}% 이상 비싸게 사면 백테스트상 기대수익이 0입니다 → 지정가 권장.<br>· 단타 주문·체결은 포트폴리오 보유 종목에 반영되지 않습니다.<br>· 근거: analysis/daytrade (국내 2014-07~2026-10 일봉)</div>`;
+}
+function dtPaperView(dt){
+  const list=dt.paper.slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0),s=dtStats(list);
+  const open=[].concat(...Object.values(dtCache.open).map(x=>x||[]));
+  const days=Math.max(0,Math.round((Date.parse(kstYmd())-Date.parse(dt.start))/864e5));
+  const stat=(l,v,c)=>`<div style="text-align:center;flex:1"><div style="font-size:10px;color:${T.text3};margin-bottom:3px">${l}</div><div class="mono" style="font-size:14px;font-weight:700;color:${c||T.text}">${v}</div></div>`;
+  const gray=`padding:10px;background:${T.bg3};color:${T.text2};border-radius:10px;font-size:12px;font-weight:700;flex:1`;
+  return `${secL('모의매매 성과 ('+dt.start+'부터 '+days+'일)')}
+    ${card(s.n?`<div style="display:flex;gap:4px">${stat('거래',s.n+'건')}${stat('승률',(s.win*100).toFixed(0)+'%')}${stat('거래당',pct(s.avg),pctC(s.avg))}${stat('누적 손익',won(Math.round(s.pnl),true),pctC(s.pnl))}</div>
+      <div style="font-size:11px;color:${T.text3};margin-top:10px;line-height:1.6">백테스트 기대치: 거래당 +${DT_BT_AVG}% · 승률 56% (ETF 4종, k 0.7, 2020~)<br>${s.slip!=null?`실측 슬리피지(감지가 vs 목표가) 평균 <b style="color:${s.slip>DT_SLIP_WARN?T.red:T.green}">${pct(s.slip)}</b> · ${s.nObs}건 — ${DT_SLIP_WARN}%를 넘으면 수동 매매로는 기대수익이 0`:'실측 슬리피지: 장중에 이 탭을 켜 두고 돌파를 감지한 거래가 쌓이면 표시됩니다.'}</div>`
+      :`<div style="font-size:13px;color:${T.text2};line-height:1.6">아직 확정된 모의 거래가 없습니다. ${dt.start} 이후 돌파가 나오면 자동으로 기록됩니다.</div>`)}
+    ${open.length?secL('보유 중 (청산 대기)')+card(open.map(p=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid ${T.border}"><span style="color:${T.text}">${esc(p.name)}</span><span class="mono" style="color:${T.text2}">${p.d.slice(5)} 진입 ${won(p.ent)}</span></div>`).join('')):''}
+    ${list.length?secL('거래 내역 (최근 60건)')+card(list.slice(0,60).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${T.border}">
+        <div><div style="font-size:13px;color:${T.text}">${esc(x.name)}</div><div class="mono" style="font-size:10px;color:${T.text3}">${x.d.slice(5)} ${won(x.ent)} → ${x.xd.slice(5)} ${won(x.xp)}${x.obs?` · 감지 ${pct((x.obs/x.tgt-1)*100)}`:''}</div></div>
+        <div class="mono" style="font-size:13px;font-weight:700;color:${pctC(x.ret)}">${pct(x.ret*100)}</div></div>`).join('')):''}
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="dtBackfill(90)" class="tap" style="${gray}">최근 3개월 소급 계산</button>
+      <button onclick="dtResetPaper()" class="tap" style="${gray};color:${T.red}">기록 초기화</button>
+    </div>
+    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:10px">· 매일 일봉으로 확정 기록합니다. 앱을 안 연 날도 다음 실행 때 소급합니다.<br>· 체결가 = 목표가 + 1호가, 청산 = ${dt.exit==='close'?'당일 종가':'다음날 시가'}, 수수료 편도 ${dt.fee}%, 개별주는 매도 거래세 ${DT_TAX}%를 반영합니다.<br>· 확정된 거래는 설정을 바꿔도 그대로 남고, 바꾼 설정은 확정 전인 날부터 적용됩니다.</div>`;
+}
+function dtCfgView(dt){
+  const opt=(key,cur,list)=>`<div style="display:flex;gap:6px">${list.map(([v,l])=>{const on=String(cur)===String(v);return `<button onclick="dtSet('${key}','${v}')" class="tap" style="flex:1;padding:9px 2px;border-radius:10px;font-size:12px;font-weight:700;background:${on?T.teal:T.bg3};color:${on?'#000':T.text2}">${l}</button>`;}).join('')}</div>`;
+  const lab=(t,first)=>`<div style="font-size:12px;color:${T.text3};margin:${first?0:12}px 0 6px">${t}</div>`;
+  const sbtn=`padding:10px 16px;background:${T.teal};color:#000;border-radius:10px;font-weight:700`;
+  const BT=[['0.3','없음','+20.4%','1.06','−28%','+3.3%'],['0.5','없음','+19.2%','1.31','−20%','+7.2%'],['0.7','없음','+15.1%','1.40','−12%','+7.3%'],['0.7','MA5','+9.0%','1.19','−9%','+5.0%'],['보유','—','+18.9%','0.70','−40%','—']];
+  return `${secL('전략 설정')}
+    ${card(`${lab('k — 목표가 = 시가 + k × 전일(고가−저가)',true)}${opt('k',dt.k,[[0.3,'0.3'],[0.5,'0.5'],[0.7,'0.7 권장'],[0.8,'0.8']])}
+      ${lab('필터 — 시가가 이동평균 위일 때만')}${opt('filt',dt.filt,[['none','없음 권장'],['ma5','MA5'],['ma20','MA20']])}
+      ${lab('청산')}${opt('exit',dt.exit,[['nextopen','다음날 시가 권장'],['close','당일 종가']])}
+      ${lab('1회 매수 금액 (원)')}<div style="display:flex;gap:8px"><input id="dtAmt" type="number" value="${dt.amt}" style="flex:1"><button onclick="dtSaveNum('amt','dtAmt')" class="tap" style="${sbtn}">저장</button></div>
+      ${lab('수수료 (편도 %)')}<div style="display:flex;gap:8px"><input id="dtFee" type="number" step="0.001" value="${dt.fee}" style="flex:1"><button onclick="dtSaveNum('fee','dtFee')" class="tap" style="${sbtn}">저장</button></div>`)}
+    ${secL('백테스트 (ETF 4종, 다음날 시가 청산, 2020-01~2026-10)')}
+    ${card(`<table style="width:100%;border-collapse:collapse;font-size:11px;text-align:right" class="mono">
+      <tr style="color:${T.text3}"><td style="text-align:left">k</td><td>필터</td><td>CAGR</td><td>Sharpe</td><td>MDD</td><td>+0.1% 슬립</td></tr>
+      ${BT.map(r=>`<tr style="color:${r[0]==='0.7'&&r[1]==='없음'?T.teal:T.text2}">${r.map((c,i)=>`<td style="padding:4px 0;${i?'':'text-align:left'}">${c}</td>`).join('')}</tr>`).join('')}
+    </table>
+    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 당일 종가 청산은 같은 조건(k 0.7)에서 CAGR +5.2%·Sharpe 0.75 — 수익의 대부분이 밤사이(다음날 시가)에서 나옵니다.<br>· 개별주 70종목은 매도 거래세 ${DT_TAX}% 때문에 거래당 총 +0.16% → 순 −0.07%로 손실이었습니다.<br>· '+0.1% 슬립'은 목표가보다 0.1% 비싸게 샀을 때의 CAGR입니다. +0.2%면 0 근처입니다.</div>`)}
+    ${secL('대상 종목')}
+    ${card(`${dt.codes.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${T.border}">
+        <div><span style="font-size:13px;color:${T.text}">${esc(m.name)}</span> <span class="mono" style="font-size:11px;color:${T.text3}">${m.code}</span> <span style="font-size:10px;color:${m.etf?T.teal:T.red}">${m.etf?'ETF':'개별주'}</span></div>
+        <button onclick="dtRemoveCode('${m.code}')" class="tap" style="padding:4px 10px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">삭제</button></div>`).join('')}
+      <div style="display:flex;gap:8px;margin-top:10px"><input id="dtCode" type="text" placeholder="종목코드 6자리 (예: 069500)" style="flex:1"><button onclick="dtAddCode()" class="tap" style="${sbtn}">추가</button></div>
+      <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">기본 4종은 국내 주식형 ETF(거래세·매매차익 비과세)입니다. 레버리지·인버스 ETF는 매매차익에 15.4% 과세되어 백테스트 수익이 대부분 사라졌습니다(KODEX 레버리지 2020~ CAGR +21.6% → +2.4%).</div>`)}`;
+}
+function dtSet(key,v){const dt=dtState();dt[key]=key==='k'?parseFloat(v):v;save();dtCompute();render();}
+function dtSaveNum(key,id){
+  const v=parseFloat(document.getElementById(id).value);
+  if(!(v>=0)||(key==='amt'&&!(v>0))){alert('올바른 숫자를 입력하세요.');return;}
+  const dt=dtState();dt[key]=key==='amt'?Math.round(v):v;
+  document.getElementById(id).blur&&document.getElementById(id).blur();
+  save();render();
+}
+async function dtAddCode(){
+  const code=String(document.getElementById('dtCode').value||'').trim().toUpperCase(),dt=dtState();
+  if(!/^[0-9A-Z]{6}$/.test(code)){alert('6자리 종목코드를 입력하세요 (예: 069500).');return;}
+  if(dt.codes.some(m=>m.code===code)){alert('이미 추가된 종목입니다.');return;}
+  let name=code,etf=false;
+  try{const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic');name=d.stockName||code;etf=d.stockEndType==='etf';}catch(e){}
+  if(!etf&&!confirm(name+'은(는) 개별주(또는 확인 실패)입니다. 매도 거래세 '+DT_TAX+'% 때문에 백테스트(70종목)에서 손실이었습니다. 그래도 추가할까요?'))return;
+  if(/레버리지|인버스|곱버스|2X/i.test(name)&&!confirm(name+'은(는) 레버리지·인버스 ETF라 매매차익에 15.4%가 과세됩니다(모의 수익에는 미반영). 그래도 추가할까요?'))return;
+  dt.codes.push({code,name,etf});save();
+  document.getElementById('dtCode').value='';
+  render();dtRefresh(false);
+}
+function dtRemoveCode(code){const dt=dtState();dt.codes=dt.codes.filter(m=>m.code!==code);delete dt.done[code];delete dtCache.open[code];save();render();}
+function dtBackfill(days){
+  if(!confirm('모의매매 기록을 지우고 최근 '+days+'일부터 현재 설정으로 다시 계산합니다. 계속할까요?'))return;
+  const dt=dtState();dt.start=dtAddDays(kstYmd(),-days);dt.paper=[];dt.done={};dtCache.open={};save();dtRefresh(false);
+}
+function dtResetPaper(){
+  if(!confirm('모의매매 기록을 모두 지우고 오늘부터 다시 시작합니다. 계속할까요?'))return;
+  const dt=dtState();dt.start=kstYmd();dt.paper=[];dt.done={};dtCache.open={};save();dtRefresh(false);
+}
+
+// B. 주문 — 신호를 보고 사용자가 직접 전송 (기본: 매수 지정가 = max(현재가, 목표가), 수량 = 1회 금액 ÷ 가격)
+function dtOrder(code,side){
+  const dt=dtState(),m=dt.codes.find(x=>x.code===code)||{code,name:code,etf:true};
+  const hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
+  if(!hasKis&&!hasKiwoom){alert('설정 탭에서 한국투자증권 또는 키움증권 API 키를 먼저 등록하세요.');return;}
+  const r=dtCache.rt[code]||{},sig=dtCache.sig[code],cur=r.cur||0;
+  let price=0,qty=0;
+  if(side==='buy'){price=ceilTick(Math.max(cur,sig&&sig.tgt||0),m.etf);qty=price>0?Math.floor(dt.amt/price):0;}
+  else{const last=dt.orders.slice().reverse().find(o=>o.code===code&&o.side==='buy');qty=last?last.qty:0;price=cur;}
+  window._dtOrder={code,side,broker:hasKis?'kis':'kiwoom',type:side==='buy'?'limit':'market',qty,price};
+  showModal(dtOrderHtml());
+}
+function dtOrderHtml(){
+  const st=window._dtOrder,dt=dtState(),m=dt.codes.find(x=>x.code===st.code)||{code:st.code,name:st.code,etf:true};
+  const isSell=st.side==='sell',isMkt=st.type==='market',hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
+  const sig=dtCache.sig[st.code],r=dtCache.rt[st.code]||{};
+  const tg=(on,l,fn,c)=>`<button onclick="${fn}" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${on?c:T.bg3};color:${on?(c===T.teal?'#000':'#fff'):T.text2}">${l}</button>`;
+  const field=(l,id,v)=>`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">${l}</div><input type="number" id="${id}" step="1" placeholder="0" value="${v||''}"></div>`;
+  return `<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.amber};margin-bottom:4px">⚡ 단타 주문 — ${esc(m.name)} (${m.code})</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:12px;line-height:1.6">${sig?`목표가 ${won(sig.tgt)} · `:''}현재가 ${r.cur?won(r.cur):'—'}${sig&&r.cur?` (목표가 대비 ${pct((r.cur/sig.tgt-1)*100)})`:''}<br><b style="color:${T.red}">${st.broker==='kis'?'한국투자증권':'키움증권'} ${brokerEnvLabel(st.broker)} 계좌로 전송됩니다</b></div>
+    ${hasKis&&hasKiwoom?`<div style="display:flex;gap:8px;margin-bottom:8px">${tg(st.broker==='kis','한국투자증권',"dtOrdSet('broker','kis')",T.teal)}${tg(st.broker==='kiwoom','키움증권',"dtOrdSet('broker','kiwoom')",T.teal)}</div>`:''}
+    <div style="display:flex;gap:8px;margin-bottom:8px">${tg(!isSell,'매수',"dtOrdSet('side','buy')",T.green)}${tg(isSell,'매도',"dtOrdSet('side','sell')",T.red)}</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">${tg(!isMkt,'지정가',"dtOrdSet('type','limit')",T.blue)}${tg(isMkt,'시장가',"dtOrdSet('type','market')",T.blue)}</div>
+    <div style="display:grid;gap:10px;margin-bottom:12px">${field('수량 (주)','dtQty',st.qty)}${isMkt?'':field('가격 (원)','dtPrice',st.price)}</div>
+    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-bottom:14px">${isSell?(dt.exit==='close'?'당일 종가 청산: 15:20 전에 매도하세요.':'다음날 시가 청산: 08:30~09:00에 넣은 시장가 매도는 09:00 시가에 체결됩니다.'):`지정가 권장 — 목표가보다 ${DT_SLIP_WARN}% 이상 비싸게 사면 백테스트상 기대수익이 0입니다. 수량은 1회 금액 ${won(dt.amt,true)}원 기준.`}<br>체결 여부는 증권사 앱에서 확인하세요. 포트폴리오 보유에는 반영되지 않습니다.</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="confirmDtOrder()" class="tap" style="flex:1;padding:14px;background:${isSell?T.red:T.green};color:#fff;border-radius:12px;font-size:15px;font-weight:700">${isSell?'매도 주문 전송':'매수 주문 전송'}</button>
+      <button onclick="closeModal()" class="tap" style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
+    </div>`;
+}
+function dtOrdSet(k,v){
+  const st=window._dtOrder,q=document.getElementById('dtQty'),p=document.getElementById('dtPrice');
+  if(q&&q.value!=='')st.qty=parseInt(q.value,10)||0;
+  if(p&&p.value!=='')st.price=parseInt(p.value,10)||0;   // 토글해도 입력값 유지
+  st[k]=v;showModal(dtOrderHtml());
+}
+async function confirmDtOrder(){
+  const st=window._dtOrder,dt=dtState(),m=dt.codes.find(x=>x.code===st.code)||{code:st.code,name:st.code,etf:true};
+  const isMkt=st.type==='market',qty=parseInt(document.getElementById('dtQty')?.value,10);
+  if(!(qty>0)){alert('수량을 입력하세요.');return;}
+  let price=0;
+  if(!isMkt){
+    price=parseInt(document.getElementById('dtPrice')?.value,10);
+    if(!(price>0)){alert('가격을 입력하세요.');return;}
+    if(price%krTick(price,m.etf)){alert('호가단위('+krTick(price,m.etf)+'원)에 맞지 않는 가격입니다.');return;}
+  }
+  const sig=dtCache.sig[st.code],over=st.side==='buy'&&sig&&price>0?(price/sig.tgt-1)*100:0;
+  const warn=over>DT_SLIP_WARN?'\n⚠ 목표가보다 '+over.toFixed(2)+'% 비쌉니다(백테스트상 기대수익 0 구간).':'';
+  const bn=st.broker==='kis'?'한국투자증권':'키움증권';
+  if(!confirm(m.name+' '+qty+'주 '+(isMkt?'시장가':won(price)+'원')+' '+(st.side==='buy'?'매수':'매도')+' 주문을 '+bn+' '+brokerEnvLabel(st.broker)+' 계좌에 전송합니다.'+warn+'\n계속할까요?'))return;
+  try{
+    const orderNo=await sendBrokerOrder(st.broker,st.side,st.code,isMkt,qty,price);
+    const n=kstNow();
+    dt.orders.push({d:kstYmd(n),hm:n.toISOString().slice(11,16),code:st.code,name:m.name,side:st.side,qty,price:isMkt?0:price,broker:st.broker,orderNo});
+    save();closeModal();render();
+    setTimeout(()=>alert('✅ 주문 접수됨\n주문번호: '+orderNo+'\n\n체결 여부는 증권사 앱에서 확인하세요.'),50);
+  }catch(e){
+    alert('❌ 주문 실패: '+e.message);
+  }
+}
+
 // ── 화면: 설정 ──
 function settingsScreen(){
   return `<div class="scr fade" style="padding:0 16px 40px;height:100%">
@@ -2001,7 +2396,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.5</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -2844,7 +3239,7 @@ function bkOrderHtml(){
   const isSell=st.side==='sell';
   const isMkt=st.type!=='limit';
   const brokerName=st.broker==='kis'?'한국투자증권':'키움증권';
-  const envLabel=st.broker==='kis'?(Store.get('kis_demo')==='1'?'모의투자':'실전투자'):(Store.get('kiwoom_mock')==='1'?'모의투자':'실전투자');
+  const envLabel=brokerEnvLabel(st.broker);
   return `<div class="sheet-handle"></div>
     <div style="font-size:16px;font-weight:700;color:${T.amber};margin-bottom:4px">⚡ 증권사 실거래 주문</div>
     <div style="font-size:12px;color:${T.text3};margin-bottom:14px">${esc(h.name)} (${h.code}) · 보유 ${h.qty.toLocaleString()}주 · <b style="color:${T.red}">${brokerName} ${envLabel} 계좌로 전송됩니다</b></div>
@@ -2872,6 +3267,16 @@ function bkOrderHtml(){
       <button onclick="closeModal()" class="tap" style="flex:1;padding:14px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:14px">취소</button>
     </div>`;
 }
+// 국내주식 현금 주문 전송(한국투자증권·키움 공통) → 주문번호
+async function sendBrokerOrder(broker,side,code,isMkt,qty,price){
+  if(broker==='kis'){
+    const res=await kisPlaceOrder(Store.get('kis_demo')==='1',side,code,isMkt?'01':'00',qty,isMkt?0:price);
+    return res.output&&res.output.ODNO||'-';
+  }
+  const res=await kiwoomPlaceOrder(Store.get('kiwoom_mock')==='1',side,code,isMkt?'03':'00',qty,isMkt?0:price);
+  return res.ord_no||(res.output&&res.output.ord_no)||'-';
+}
+function brokerEnvLabel(broker){return (broker==='kis'?Store.get('kis_demo'):Store.get('kiwoom_mock'))==='1'?'모의투자':'실전투자';}
 function bkSetBroker(b){window._bkOrder.broker=b;showModal(bkOrderHtml());}
 function bkSetSide(s){window._bkOrder.side=s;showModal(bkOrderHtml());}
 function bkSetType(t){window._bkOrder.type=t;showModal(bkOrderHtml());}
@@ -2892,18 +3297,7 @@ async function confirmBrokerOrder(){
   const brokerName=st.broker==='kis'?'한국투자증권':'키움증권';
   if(!confirm((isSell?'매도':'매수')+' 주문을 '+brokerName+' 실계좌에 전송합니다. 계속할까요?'))return;
   try{
-    let res,orderNo;
-    if(st.broker==='kis'){
-      const demo=Store.get('kis_demo')==='1';
-      const ordDvsn=isMkt?'01':'00';
-      res=await kisPlaceOrder(demo,st.side,h.code,ordDvsn,qty,isMkt?0:price);
-      orderNo=res.output&&res.output.ODNO||'-';
-    }else{
-      const mock=Store.get('kiwoom_mock')==='1';
-      const trdeTp=isMkt?'03':'00';
-      res=await kiwoomPlaceOrder(mock,st.side,h.code,trdeTp,qty,isMkt?0:price);
-      orderNo=res.ord_no||(res.output&&res.output.ord_no)||'-';
-    }
+    const orderNo=await sendBrokerOrder(st.broker,st.side,h.code,isMkt,qty,price);
     closeModal();
     setTimeout(()=>alert('✅ 주문 접수됨\n주문번호: '+orderNo+'\n\n체결 확인 후 ＋매수/－매도 반영 버튼으로 직접 기록하세요.'),50);
   }catch(e){
@@ -3038,7 +3432,7 @@ document.addEventListener('touchend',e=>{
 },{passive:true});
 
 // ── 메인 렌더 ──
-const TABS=[{id:'home',ic:'◎',l:'홈'},{id:'holdings',ic:'≡',l:'종목'},{id:'switching',ic:'⇄',l:'스위칭'},{id:'rebal',ic:'⊖',l:'리밸런싱'},{id:'analysis',ic:'↗',l:'분석'},{id:'settings',ic:'◈',l:'설정'}];
+const TABS=[{id:'home',ic:'◎',l:'홈'},{id:'holdings',ic:'≡',l:'종목'},{id:'switching',ic:'⇄',l:'스위칭'},{id:'rebal',ic:'⊖',l:'리밸런싱'},{id:'analysis',ic:'↗',l:'분석'},{id:'daytrade',ic:'⚡',l:'단타'},{id:'settings',ic:'◈',l:'설정'}];
 
 function render(){
   let content='';
@@ -3047,6 +3441,7 @@ function render(){
   else if(tab==='switching')content=switchingScreen();
   else if(tab==='rebal')content=rebalScreen();
   else if(tab==='analysis')content=analysisScreen();
+  else if(tab==='daytrade')content=dtScreen();
   else content=settingsScreen();
 
   document.getElementById('app').innerHTML=`<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:${T.bg};overflow:hidden;position:relative">
@@ -3062,6 +3457,7 @@ function render(){
   </div>`;
   // 리밸런싱: 배분 가이드는 DOM 주입(슬라이더 oninput과 공유)
   if(tab==='rebal')renderAllocCards();
+  if(tab==='daytrade')dtOnShow();
 }
 
 render();
