@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v5.6</title>
+<title>포트폴리오 v6.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -200,7 +200,7 @@ const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrde
 const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
 const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
 
-// ── 단타 탭 기본값 (v5.6) — 근거: analysis/daytrade/ (국내 2014-07~2026-10 일봉 백테스트) ──
+// ── 단타 탭 기본값 (v6.0) — 근거: analysis/daytrade/ (국내 2014-07~2026-10 일봉 백테스트) ──
 // · 당일 종가 청산은 비용 후 수익이 거의 없음(ETF 2020~ CAGR +2~5%, 개별주 중앙값 −14%) → 기본은 다음날 시가 청산(1박)
 // · 개별주는 매도 거래세 0.20%가 거래당 총수익(+0.16%)보다 커서 손실 → 국내 주식형 ETF(거래세·매매차익 비과세)만 기본 대상
 // · 레버리지·인버스 ETF는 매매차익 배당소득세 15.4% → 제외
@@ -319,7 +319,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'5.6'
+  ver:'6.0'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -664,12 +664,12 @@ function migratePortfolio(p){
   // v5.4: 수시 기준을 목표 금액 ±25%로 변경, 알림은 6·12월 정기만 — 데이터 변환 불필요
   // v5.5: 목표비중 금 30→25·코인 10→15로 변경(사용자 선택) — 저장된 목표비중을 새 고정 비중으로 1회 교체
   if(vn<5.5)p.targets=Object.assign({},FIXED_TARGETS);
-  // v5.6: 단타 탭(변동성 돌파 신호 + 모의매매) 상태 추가 — 없으면 기본값, 모의매매 시작일은 처음 실행한 날
+  // v6.0: 단타 탭(변동성 돌파 신호 + 모의매매) 상태 추가 — 없으면 기본값, 모의매매 시작일은 처음 실행한 날
   if(!p.dt)p.dt=JSON.parse(JSON.stringify(DT_DEFAULT));
   ['paper','orders','codes'].forEach(k=>{if(!Array.isArray(p.dt[k]))p.dt[k]=[];});
   ['done','obs'].forEach(k=>{if(!p.dt[k]||typeof p.dt[k]!=='object')p.dt[k]={};});
   if(!p.dt.start)p.dt.start=kstYmd();
-  p.ver='5.6';
+  p.ver='6.0';
   return p;
 }
 
@@ -1935,7 +1935,7 @@ function analysisScreen(){
   </div>`;
 }
 
-// ── 화면: 단타 (v5.6) — 변동성 돌파 ──
+// ── 화면: 단타 (v6.0) — 변동성 돌파 ──
 // A 모의매매: 시작일 이후 일봉으로 돌파를 날짜순으로 확정 기록(앱을 안 연 날도 다음 실행 때 소급, append-only).
 // B 신호·주문: 장중 15초마다 시세를 갱신해 돌파를 표시. 주문은 사용자가 ⚡ 버튼으로 확인 후 직접 전송(자동 주문 없음).
 // 단타 기록·주문은 포트폴리오 보유·리밸런싱에 반영되지 않는다.
@@ -2396,7 +2396,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.6</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 

@@ -1,4 +1,4 @@
-// 단타 탭(v5.6) 로직 회귀 테스트: 호가단위·돌파 판정·모의매매 장부·감지가·주문 모달
+// 단타 탭(v6.0) 로직 회귀 테스트: 호가단위·돌파 판정·모의매매 장부·감지가·주문 모달
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/index.html'),'utf8');
 const code=html.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -74,6 +74,7 @@ ok(run(`dtMergeToday(__base,{o:10150,h:10180,l:10120,cur:10170,t:'${y1}T15:30:00
 ok(run(`dtMergeToday(__base,{o:0,h:0,l:0,cur:10200,t:'${today}T08:40:00+09:00'},'${today}')`).length===2,'장 시작 전(시가 0) → 추가 안 함');
 
 // 7. 감지가: 이번 실행 중 '대기'를 본 뒤 돌파한 것만 기록 (오늘 목표가 = 10150 + 0.7×300 = 10360)
+run('kstHm=()=>1000');   // 장중(10:00)으로 고정 — 실제 시각이 장 마감 후면 오늘 봉이 확정돼 장중 시나리오가 성립하지 않음
 run(`portfolio.dt={k:0.7,filt:'none',exit:'nextopen',fee:0.015,amt:1000000,start:'${today}',paper:[],done:{},obs:{},orders:[],codes:[{code:'069500',name:'KODEX 200',etf:true}]}`);
 run(`dtCache.candles={'069500':__base};dtCache.seenWait={};dtCache.newHit=null`);
 run(`dtCache.rt={'069500':{o:10150,h:10340,l:10120,cur:10330,status:'OPEN',t:'${today}T10:00:00+09:00'}};dtCompute()`);
@@ -134,8 +135,8 @@ ok(run('window._dtOrder.qty')===96&&run('window._dtOrder.type')==='market','매�
 
 // 10. 마이그레이션: 단타 상태 기본값, 기존 값 유지
 const mig=run(`migratePortfolio({ver:'5.5',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
-ok(mig.ver==='5.6'&&mig.dt.k===0.7&&mig.dt.exit==='nextopen'&&mig.dt.codes.length===4&&mig.dt.codes.every(c=>c.etf)&&mig.dt.start===today,'v5.5 → 단타 기본값(ETF 4종, k 0.7, 다음날 시가) · 시작일 오늘');
-const kept=run(`migratePortfolio({ver:'5.6',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],dt:{k:0.5,filt:'ma20',exit:'close',amt:500000,fee:0.01,start:'2026-09-01',codes:[{code:'069500',name:'KODEX 200',etf:true}],paper:[{key:'a'}]}})`);
+ok(mig.ver==='6.0'&&mig.dt.k===0.7&&mig.dt.exit==='nextopen'&&mig.dt.codes.length===4&&mig.dt.codes.every(c=>c.etf)&&mig.dt.start===today,'v5.5 → 단타 기본값(ETF 4종, k 0.7, 다음날 시가) · 시작일 오늘');
+const kept=run(`migratePortfolio({ver:'6.0',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],dt:{k:0.5,filt:'ma20',exit:'close',amt:500000,fee:0.01,start:'2026-09-01',codes:[{code:'069500',name:'KODEX 200',etf:true}],paper:[{key:'a'}]}})`);
 ok(kept.dt.k===0.5&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.obs==='object','기존 단타 설정·기록 유지 + 누락 필드 보완');
 
 console.log(`\n${pass} passed, ${fail} failed`);
