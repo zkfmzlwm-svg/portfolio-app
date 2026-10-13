@@ -11,7 +11,7 @@ const sandbox={console,window:{},localStorage:{_d:{},getItem(k){return this._d[k
 vm.createContext(sandbox);vm.runInContext(code,sandbox);
 const run=e=>vm.runInContext(e,sandbox);
 let issues=0;
-for(const t of['home','holdings','switching','rebal','analysis','settings']){
+for(const t of['home','holdings','switching','rebal','analysis','daytrade','settings']){
   run("tab='"+t+"';render()");
   const out=els.app._html;
   for(const bad of['undefined','NaN','function ','[object']){
