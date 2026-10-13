@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v5.4</title>
+<title>포트폴리오 v5.5</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -193,10 +193,12 @@ const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrde
 // ── 고정 목표비중 (국면 무관) ──
 // 근거: 2003-01~2026-09 월간 KRW 백테스트 (analysis/regime_weights/static.py·robust.py·candidates.py)
 // 과거 수익률 최적화는 기간마다 크게 흔들림(워크포워드 OOS Sharpe 0.83) → 방법 간 공통 결과(채권↓·금↑·코인 5~20%)만 반영.
-// 전체기간 Sharpe 1.08 / MDD −13.2% (기존 25/25/20/20/10: 1.04 / −15.2%). 월 적립금 부족분 배분 권장.
+// 백테스트 추천안 20/30/10/30/10: 전체기간 Sharpe 1.08 / MDD −13.2% (기존 25/25/20/20/10: 1.04 / −15.2%). 월 적립금 부족분 배분 권장.
+// v5.5: 사용자 선택으로 금 30→25, 코인 10→15 (analysis/rebal_cycle/gold_crypto.py — 2014-10~ 반기+±25% 기준
+//       Sharpe 1.43→1.38, MDD −13.1→−17.6%, 코인 위험기여 42→61%. 코인 기대수익이 낮아지면 격차 확대)
 // 리밸런싱 주기는 반기(6·12월) 정기 + 목표 금액 ±25% 수시 (analysis/rebal_cycle, 아래 REBAL_MONTHS·REBAL_REL).
-const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:30,crypto:10};
-const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 30 · 코인 10%';
+const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
+const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
 
 // 워치리스트 — 해외(미국) 시드. cur·targetPrice는 추정치(placeholder)로, 앱 실행 시 자동 업데이트가
 // 네이버 해외주식 컨센서스로 즉시 덮어쓴다. eps·indPer는 업종 PER 비교용 고정값(자동 갱신 안 됨 — 국내
@@ -213,7 +215,7 @@ const OVERSEAS_WATCHLIST_SEED=[
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
-  targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},
+  targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},
   holdings:{
     kr_stocks:[
       {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['성장주','소형주'],eps:1782,indPer:50},
@@ -301,7 +303,7 @@ const INIT={
     ]
   },
   txns:[],
-  ver:'5.4'
+  ver:'5.5'
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
@@ -644,7 +646,9 @@ function migratePortfolio(p){
   // v5.2: 장기보유(h.keep) 플래그 추가 — 필드 없으면 미지정(리밸런싱 포함)이라 데이터 변환 불필요
   // v5.3: 반기 리밸런싱 완료 기록(p.lastRebal) 추가 — 필드 없으면 '기록 없음'이라 데이터 변환 불필요
   // v5.4: 수시 기준을 목표 금액 ±25%로 변경, 알림은 6·12월 정기만 — 데이터 변환 불필요
-  p.ver='5.4';
+  // v5.5: 목표비중 금 30→25·코인 10→15로 변경(사용자 선택) — 저장된 목표비중을 새 고정 비중으로 1회 교체
+  if(vn<5.5)p.targets=Object.assign({},FIXED_TARGETS);
+  p.ver='5.5';
   return p;
 }
 
@@ -660,7 +664,7 @@ if(!portfolio.targets)portfolio.targets=Object.assign({},FIXED_TARGETS);
 // 고정 비중 운영 전환(1회): 기존 저장 목표비중을 백테스트 기반 고정 비중으로 교체
 if(!portfolio.fixedTargetsV1){portfolio.targets=Object.assign({},FIXED_TARGETS);portfolio.fixedTargetsV1=true;Store.set('porto',JSON.stringify(portfolio));}
 ['kr','us','bonds','gold','crypto'].forEach(k=>{if(portfolio.targets[k]==null)portfolio.targets[k]=0;});
-let tab='home',catH='kr',filterP='all',monthly=200,loadingPrice=false,logs=[];
+let tab='home',catH='kr',filterP='all',monthly=250,loadingPrice=false,logs=[];
 let touchStartX=0,touchStartY=0;
 
 // ── 헬퍼 ──
@@ -1629,7 +1633,7 @@ function styleTiltCard(){
     ${bucket('us','🌏 해외주식')}
     ${keptSummary().n?`<button onclick="showKeepModal()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">🔒 장기보유(제외) 종목 관리</button>`:''}
     ${Object.keys(portfolio.styleTargets||{}).length?`<button onclick="resetAllStyleTargets()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">전체 권장값으로 복원</button>`:''}
-    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">목표는 2000~2026 월간 백테스트 권장값입니다(analysis/style_tilt/weights.py). 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 개선폭은 Sharpe +0.02~0.03 수준이라 자산군 비중(고정 20/30/10/30/10)이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
+    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">목표는 2000~2026 월간 백테스트 권장값입니다(analysis/style_tilt/weights.py). 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 개선폭은 Sharpe +0.02~0.03 수준이라 자산군 비중(고정 ${Object.values(FIXED_TARGETS).join('/')})이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
   </div>`;
 }
 
@@ -1997,7 +2001,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.4</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v5.5</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 

@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='5.4','버전 5.4, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='5.5','버전 5.5, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -39,6 +39,14 @@ ok(Math.abs(sumAlloc-2000000)<2,`월 200만 전량 배분 (${sumAlloc})`);
 ok(plan.months>0,'달성 개월수: '+plan.months);
 ok(plan.Xstar>=c.total,'Xstar>=현재총액');
 
+// v5.5: 목표비중 금 25·코인 15, 월 투자금 기본 250만원
+{const ft=run('FIXED_TARGETS');ok(ft.kr===20&&ft.us===30&&ft.bonds===10&&ft.gold===25&&ft.crypto===15,'고정비중 20/30/10/25/15');
+ ok(JSON.stringify(run('INIT.targets'))===JSON.stringify(ft),'신규 설치 목표비중 = 고정비중');
+ ok(run('monthly')===250,'월 투자금 기본 250만원, got '+run('monthly'));
+ const old=run(`migratePortfolio({ver:'5.4',targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
+ ok(old.targets.gold===25&&old.targets.crypto===15&&old.ver==='5.5','v5.4 저장 목표비중 → 25/15로 1회 교체');
+ const kept=run(`migratePortfolio({ver:'5.5',targets:{kr:20,us:30,bonds:10,gold:20,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
+ ok(kept.targets.gold===20&&kept.targets.crypto===20,'v5.5 이후 사용자가 바꾼 목표비중은 유지');}
 // 고정 목표비중 합계 100 + 초기 로드 시 적용
 {const p=run('FIXED_TARGETS');const s=p.kr+p.us+p.bonds+p.gold+p.crypto;ok(s===100,'고정비중 합=100 ('+s+')');
  ok(run('portfolio.fixedTargetsV1')===true,'고정비중 1회 전환 플래그');}
@@ -128,7 +136,7 @@ ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목),
 // 7b. v5.1 마이그레이션: 기존 사용자 워치리스트에 해외 시드 종목 비파괴적으로 병합
 const migratedOnce=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
   watchlist:[{id:'old1',name:'내가 추가한 종목',code:'999999'}]},txns:[],targets:{},switching:{}})`);
-ok(migratedOnce.ver==='5.4','마이그레이션 후 ver 5.4, got '+migratedOnce.ver);
+ok(migratedOnce.ver==='5.5','마이그레이션 후 ver 5.5, got '+migratedOnce.ver);
 ok(migratedOnce.holdings.watchlist.some(h=>h.name==='내가 추가한 종목'),'기존 워치리스트 항목 보존');
 ok(migratedOnce.holdings.watchlist.filter(h=>h.ticker==='NVDA').length===1,'해외 시드(NVDA) 1건 병합');
 const seed=run('OVERSEAS_WATCHLIST_SEED');
@@ -203,10 +211,10 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("migratePortfolio(JSON.parse(JSON.stringify(portfolio))).lastRebal")===run('portfolio.lastRebal'),'마이그레이션·백업 후 완료 기록 유지');
   run("delete portfolio.lastRebal");
 
-  // 수시 기준(v5.4): 목표 금액 대비 ±25%. INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/30/10) → 전 자산군 초과
+  // 수시 기준(v5.4): 목표 금액 대비 ±25%. INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/25/15) → 전 자산군 초과
   const br=run("bandBreaches().map(r=>r.k)");
   ok(br.join()==='kr,us,bonds,gold,crypto','목표 금액 ±25% 초과 자산군: '+br.join());
-  ok(Math.round(run("relDev(rebalRows().find(r=>r.k==='crypto'))"))===124,'코인 목표 대비 +124%');
+  ok(Math.round(run("relDev(rebalRows().find(r=>r.k==='crypto'))"))===49,'코인 목표(15%) 대비 +49%, got '+Math.round(run("relDev(rebalRows().find(r=>r.k==='crypto'))")));
   const mk=(ev,tval)=>`bandBreaches([{k:'x',name:'x',ev:${ev},tval:${tval},w:0.1,cur:0}]).length`;
   ok(run(mk(125,100))===0&&run(mk(76,100))===0,'100만원 → 125만원·76만원은 기준 이내(경계 포함)');
   ok(run(mk(126,100))===1&&run(mk(74,100))===1,'100만원 → 126만원·74만원은 수시 기준 초과');
