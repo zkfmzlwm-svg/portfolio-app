@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from static import *                                   # X(월수익률+rf), A
 W = np.array([20, 30, 10, 30, 10]) / 100               # 앱 고정 목표 20/30/10/30/10
 
-def sim(Rx, months=(), band=None, rel=None, cost=.003, contrib=0.0, v0=1.0):
+def sim(Rx, months=(), band=None, rel=None, cost=.003, contrib=0.0, v0=1.0, W=W):
     """months: 리밸런싱 실행 월(1~12) — 해당 월말에 목표비중으로 전량 재조정
        band: 월말 점검 시 |현재−목표| 최대값이 band(비중 %p 소수) 넘으면 수시 리밸런싱
        rel: 월말 점검 시 자산군 금액이 목표 금액 대비 ±rel(상대, 0.25 = 100만원→125만원·75만원) 넘으면 수시 리밸런싱
