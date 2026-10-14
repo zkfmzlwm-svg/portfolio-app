@@ -21,7 +21,7 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 // 1. 초기 로드/마이그레이션
-const ver=run('portfolio.ver');ok(ver==='6.0','버전 6.0, got '+ver);
+const ver=run('portfolio.ver');ok(ver==='6.1','버전 6.1, got '+ver);
 ok(Array.isArray(run('portfolio.txns')),'txns 배열');
 
 // 2. 홈 계산
@@ -44,7 +44,7 @@ ok(plan.Xstar>=c.total,'Xstar>=현재총액');
  ok(JSON.stringify(run('INIT.targets'))===JSON.stringify(ft),'신규 설치 목표비중 = 고정비중');
  ok(run('monthly')===250,'월 투자금 기본 250만원, got '+run('monthly'));
  const old=run(`migratePortfolio({ver:'5.4',targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
- ok(old.targets.gold===25&&old.targets.crypto===15&&old.ver==='6.0','v5.4 저장 목표비중 → 25/15로 1회 교체');
+ ok(old.targets.gold===25&&old.targets.crypto===15&&old.ver==='6.1','v5.4 저장 목표비중 → 25/15로 1회 교체');
  const kept=run(`migratePortfolio({ver:'5.5',targets:{kr:20,us:30,bonds:10,gold:20,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
  ok(kept.targets.gold===20&&kept.targets.crypto===20,'v5.5 이후 사용자가 바꾼 목표비중은 유지');}
 // 고정 목표비중 합계 100 + 초기 로드 시 적용
@@ -136,7 +136,7 @@ ok(namesAfter[0]==='매력종목','점수 높은 순 정렬 (1위=매력종목),
 // 7b. v5.1 마이그레이션: 기존 사용자 워치리스트에 해외 시드 종목 비파괴적으로 병합
 const migratedOnce=run(`migratePortfolio({ver:'5.0',holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],
   watchlist:[{id:'old1',name:'내가 추가한 종목',code:'999999'}]},txns:[],targets:{},switching:{}})`);
-ok(migratedOnce.ver==='6.0','마이그레이션 후 ver 6.0, got '+migratedOnce.ver);
+ok(migratedOnce.ver==='6.1','마이그레이션 후 ver 6.1, got '+migratedOnce.ver);
 ok(migratedOnce.holdings.watchlist.some(h=>h.name==='내가 추가한 종목'),'기존 워치리스트 항목 보존');
 ok(migratedOnce.holdings.watchlist.filter(h=>h.ticker==='NVDA').length===1,'해외 시드(NVDA) 1건 병합');
 const seed=run('OVERSEAS_WATCHLIST_SEED');
