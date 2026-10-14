@@ -1,4 +1,4 @@
-// 단타 탭(v6.0) 로직 회귀 테스트: 호가단위·돌파 판정·모의매매 장부·감지가·주문 모달
+// 단타 탭(v6.1) 로직 회귀 테스트: 미국 신호 정렬·판정·모의매매 장부·야후 파싱·화면·주문 모달·마이그레이션
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/index.html'),'utf8');
 const code=html.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -15,129 +15,156 @@ const run=e=>vm.runInContext(e,sandbox);
 let pass=0,fail=0;
 const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗ FAIL:',m);}};
 const near=(a,b,e=1e-12)=>Math.abs(a-b)<e;
+const clean=s=>!/undefined|NaN|\[object/.test(s);
 
 (async()=>{
-// 1. 호가단위 (ETF 2천원 이상 5원, 주식 가격대별)
-ok(run('krTick(1999,true)')===1&&run('krTick(95000,true)')===5,'ETF 호가단위');
-ok(run('krTick(4999,false)')===5&&run('krTick(19990,false)')===10&&run('krTick(49950,false)')===50&&run('krTick(199900,false)')===100&&run('krTick(250000,false)')===500&&run('krTick(600000,false)')===1000,'주식 호가단위');
-ok(run('ceilTick(101017.5,true)')===101020&&run('ceilTick(101020,true)')===101020,'ETF 목표가 호가 올림');
-ok(run('ceilTick(49990,false)')===50000&&run('ceilTick(250001,false)')===250500,'주식 목표가 호가 올림');
+// 1. 미국 신호 정렬: 한국 D의 신호 = P ≤ u < D 인 미국 세션들의 누적 등락
+sandbox.__bars=[{d:'2026-10-07',c:100},{d:'2026-10-08',c:96},{d:'2026-10-09',c:95.04},{d:'2026-10-12',c:95}];
+let s=run("dtUsChange(__bars,'2026-10-08','2026-10-12')");   // 한국 목(10-08) → 월(10-12, 10-09 한글날 휴장)
+ok(s&&near(s.chg,95.04/100-1)&&s.n===2&&s.to==='2026-10-09','휴장 낀 월요일: 미국 목·금 2세션 누적 '+JSON.stringify(s));
+s=run("dtUsChange(__bars,'2026-10-12','2026-10-13')");
+ok(s&&near(s.chg,95/95.04-1)&&s.n===1,'화요일: 미국 월요일 1세션');
+ok(run("dtUsChange(__bars.filter(x=>x.d!=='2026-10-12'),'2026-10-12','2026-10-13')")===null,'미국 휴장(새 세션 없음) → 신호 없음');
+s=run("dtUsChange(__bars,'2026-10-12',null)");
+ok(s&&s.to==='2026-10-12'&&s.from==='2026-10-09','다음 거래일 미정 → 끝난 세션 전부');
+ok(run("dtUsChange(__bars,'2026-10-07','2026-10-08')")===null,'기준 종가 이전 데이터 없으면 신호 없음');
 
-// 2. 돌파 판정: 목표가 = 시가 + k × 전일 범위
-const cs=[{d:'2026-10-01',o:10000,h:10200,l:9900,c:10100},{d:'2026-10-02',o:10050,h:10300,l:10000,c:10280},{d:'2026-10-05',o:10400,h:10450,l:10350,c:10420}];
-sandbox.__cs=cs;
-const s1=run("dtSignalAt(__cs,1,{k:0.7,filt:'none'},true)");
-ok(s1.tgt===10260&&s1.hit===true&&s1.pass===true,'목표가 10050+0.7×300=10260, 고가 10300 돌파: '+JSON.stringify(s1));
-ok(run("dtSignalAt(__cs,1,{k:0.9,filt:'none'},true)").hit===false,'k 0.9 → 목표가 10320 미돌파');
-ok(run("dtSignalAt(__cs,1,{k:0.7,filt:'ma5'},true)")===null,'MA5 계산 불가(이력 부족) → 신호 없음');
-ok(run("dtSignalAt(__cs,0,{k:0.7,filt:'none'},true)")===null,'첫 봉은 전일 없음');
-
-// 3. 순수익: 수수료 양방향 + 개별주만 거래세 0.20%
+// 2. 판정
+ok(run("dtHit({dir:'down',th:3},-0.03)")===true&&run("dtHit({dir:'down',th:3},-0.029)")===false,'하락 −3% 기준');
+ok(run("dtHit({dir:'up',th:3},0.03)")===true&&run("dtHit({dir:'up',th:3},0.02)")===false,'상승 +3% 기준');
+ok(near(run('dtNetRet(200000,206000,false,0.015)'),206000*(1-0.00015-0.002)/(200000*1.00015)-1),'개별주 순수익(거래세 0.2%)');
 ok(near(run('dtNetRet(10000,10100,true,0.015)'),10100*(1-0.00015)/(10000*1.00015)-1),'ETF 순수익(세금 없음)');
-ok(near(run('dtNetRet(10000,10100,false,0.015)'),10100*(1-0.00015-0.002)/(10000*1.00015)-1),'개별주 순수익(거래세 0.2%)');
 
-// 4. 모의매매: 다음날 시가 청산 → 확정·멱등·설정 변경 후에도 유지
-run("__dt={k:0.7,filt:'none',exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{},obs:{}};__m={code:'069500',name:'KODEX 200',etf:true}");
-let open=run("dtProcessPaper(__dt,__m,__cs,'2026-10-06',false)");
+// 3. 모의매매: 신호일 시가 매수 → 다음 거래일 시가 매도
+sandbox.__us=[{d:'2026-10-06',c:100},{d:'2026-10-07',c:101},{d:'2026-10-08',c:97},{d:'2026-10-09',c:97.5},{d:'2026-10-12',c:98}];
+sandbox.__cs=[{d:'2026-10-07',o:190000,h:192000,l:188000,c:191000},{d:'2026-10-08',o:192000,h:193000,l:190000,c:191500},
+              {d:'2026-10-12',o:200000,h:206000,l:199000,c:205000},{d:'2026-10-13',o:206000,h:207000,l:203000,c:204000}];
+run("__p={id:'p1',label:'반도체',us:'SOXX',dir:'down',th:3,codes:[]};__m={code:'000660',name:'SK하이닉스',etf:false}");
+run("__dt={exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{}}");
+let open=run("dtProcessPair(__dt,__p,__m,__cs,__us,'2026-10-14',false)");
 let paper=run('__dt.paper');
-ok(paper.length===1&&open.length===0,'거래 1건 확정, 보유 없음');
-ok(paper[0].ent===10265&&paper[0].xp===10400&&paper[0].xd==='2026-10-05','진입 = 목표가+1호가 10265, 청산 = 다음날 시가 10400');
-ok(near(paper[0].ret,10400*(1-0.00015)/(10265*1.00015)-1),'모의 순수익 계산');
-ok(run("__dt.done['069500']")==='2026-10-05','확정일 기록');
-run("__dt.k=0.3");run("dtProcessPaper(__dt,__m,__cs,'2026-10-06',false)");
-ok(run('__dt.paper.length')===1&&run('__dt.paper[0].k')===0.7,'재처리해도 중복 없음 · 설정 바꿔도 확정 거래 유지');
-// 다음날 시가가 아직 없으면 보유 중
-run("__dt2={k:0.7,filt:'none',exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{},obs:{}}");
-open=run("dtProcessPaper(__dt2,__m,__cs.slice(0,2),'2026-10-02',false)");
-ok(open.length===1&&open[0].ent===10265&&run('__dt2.paper.length')===0,'청산 전 → 보유 중 1건');
-ok(!run("__dt2.done['069500']")||run("__dt2.done['069500']")<'2026-10-02','미청산일은 확정 표시 안 함');
-// 당일 종가 청산: 장 마감 확정 전에는 보유, 확정 후 종가 청산
-run("__dt3={k:0.7,filt:'none',exit:'close',fee:0.015,amt:1000000,start:'2026-10-02',paper:[],done:{},obs:{}}");
-open=run("dtProcessPaper(__dt3,__m,__cs.slice(0,2),'2026-10-02',false)");
+ok(paper.length===1&&open.length===0,'10-12 한 건(미국 목·금 −3.47%) 확정');
+ok(paper[0].d==='2026-10-12'&&paper[0].ent===200000&&paper[0].xp===206000&&paper[0].xd==='2026-10-13','시가 200,000 매수 → 다음 거래일 시가 206,000 매도');
+ok(near(paper[0].ret,206000*(1-0.00015-0.002)/(200000*1.00015)-1)&&near(paper[0].chg,97.5/101-1),'순수익·신호 등락 기록');
+ok(run("__dt.done['p1|000660']")==='2026-10-13','확정일 기록');
+run("__p.th=1;dtProcessPair(__dt,__p,__m,__cs,__us,'2026-10-14',false);__p.th=3");
+ok(run('__dt.paper.length')===1&&run('__dt.paper[0].th')===3,'재처리해도 중복 없음 · 설정 바꿔도 확정 거래 유지');
+// 다음 거래일 시가가 아직 없으면 보유 중
+run("__dt2={exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{}}");
+open=run("dtProcessPair(__dt2,__p,__m,__cs.slice(0,3),__us,'2026-10-12',false)");
+ok(open.length===1&&open[0].ent===200000&&run('__dt2.paper.length')===0&&run("__dt2.done['p1|000660']")==='2026-10-08','청산 전 → 보유 중, 확정은 전날까지');
+// 당일 종가 청산
+run("__dt3={exit:'close',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{}}");
+open=run("dtProcessPair(__dt3,__p,__m,__cs.slice(0,3),__us,'2026-10-12',false)");
 ok(open.length===1&&run('__dt3.paper.length')===0,'종가 청산: 장중엔 보유');
-open=run("dtProcessPaper(__dt3,__m,__cs.slice(0,2),'2026-10-02',true)");
-ok(open.length===0&&run('__dt3.paper.length')===1&&run('__dt3.paper[0].xp')===10280,'종가 청산: 마감 후 종가 10280 청산');
-// 시작일 이전 돌파는 무시, 미돌파 장중 날은 대기
-run("__dt4={k:0.7,filt:'none',exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-05',paper:[],done:{},obs:{}}");
-run("dtProcessPaper(__dt4,__m,__cs,'2026-10-05',false)");
-ok(run('__dt4.paper.length')===0&&!run("__dt4.done['069500']"),'시작일 이전 무시 · 오늘 미돌파(장중)는 미확정');
+run("dtProcessPair(__dt3,__p,__m,__cs.slice(0,3),__us,'2026-10-12',true)");
+ok(run('__dt3.paper.length')===1&&run('__dt3.paper[0].xp')===205000,'종가 청산: 마감 후 종가 205,000');
+// 상승 후 매수 방향 · 미국 휴장
+run("__dt4={exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{}};__pu={id:'pu',us:'SOXX',dir:'up',th:0.5,codes:[]}");
+run("dtProcessPair(__dt4,__pu,__m,__cs,__us,'2026-10-14',false)");
+open=run("dtProcessPair(__dt4,__pu,__m,__cs,__us,'2026-10-14',false)");
+ok(JSON.stringify(run('__dt4.paper.map(x=>x.d)'))==='["2026-10-08"]'&&run("__dt4.done['pu|000660']")==='2026-10-12'&&open.length===1&&open[0].d==='2026-10-13','상승 방향: 10-08(+1%) 확정, 10-13(+0.51%)은 다음 거래일 시가 대기');
+run("__dt5={exit:'nextopen',fee:0.015,amt:1000000,start:'2026-10-01',paper:[],done:{}}");
+run("dtProcessPair(__dt5,__p,__m,__cs,__us.filter(x=>x.d<'2026-10-08'),'2026-10-14',false)");
+ok(run('__dt5.paper.length')===0,'미국 데이터에 없는 구간은 신호 없음');
+// 통계
+const st=run(`dtStats([{ret:0.01,amt:1e6},{ret:-0.005,amt:2e6}])`);
+ok(st.n===2&&st.win===0.5&&near(st.avg,0.25)&&near(st.pnl,0),'통계 '+JSON.stringify(st));
 
-// 5. 통계
-const st=run(`dtStats([{ret:0.01,amt:1e6,obs:10030,tgt:10000},{ret:-0.005,amt:2e6,obs:null,tgt:10000}])`);
-ok(st.n===2&&st.win===0.5&&near(st.avg,0.25)&&near(st.pnl,0)&&near(st.slip,0.3,1e-9)&&st.nObs===1,'통계: 건수·승률·평균·손익·실측 슬리피지 '+JSON.stringify(st));
+// 4. 야후 응답 파싱: 진행 중인 정규장은 끝난 세션에서 빼고 live로
+const now=Math.floor(Date.now()/1000),day=86400;
+const mkResp=(liveNow)=>{const st0=liveNow?now-3600:now+3600;
+  return {chart:{result:[{meta:{regularMarketPrice:94,currentTradingPeriod:{regular:{start:st0,end:st0+23400}}},
+    timestamp:[st0-2*day,st0-day,st0].filter(t=>liveNow||t<now),indicators:{quote:[{close:[100,98,95].slice(0,liveNow?3:2)}]}}]}};};
+sandbox.__resp=mkResp(true);run("nativeGet=async()=>__resp");
+let u=await run("dtFetchUs('SOXX','2026-10-01')");
+ok(u.ok&&u.bars.length===2&&u.live&&u.live.c===94&&near(u.live.chg,94/98-1),'장중: 끝난 세션 2개 + live(실시간가 94, −4.08%)');
+sandbox.__resp=mkResp(false);
+u=await run("dtFetchUs('SOXX','2026-10-01')");
+ok(u.bars.length===2&&u.live===null,'장 마감 후: live 없음');
 
-// 6. 실시간 병합: 오늘 날짜일 때만 오늘 봉으로 사용
-const today=run('kstYmd()'),y1=run(`dtAddDays('${today}',-1)`),y2=run(`dtAddDays('${today}',-2)`);
-sandbox.__base=[{d:y2,o:10000,h:10200,l:9900,c:10100},{d:y1,o:10100,h:10300,l:10000,c:10200}];
-ok(run(`dtMergeToday(__base,{o:10150,h:10180,l:10120,cur:10170,t:'${today}T10:00:00+09:00'},'${today}')`).length===3,'오늘 시세 → 오늘 봉 추가');
-ok(run(`dtMergeToday(__base,{o:10150,h:10180,l:10120,cur:10170,t:'${y1}T15:30:00+09:00'},'${today}')`).length===2,'휴장(시세 날짜≠오늘) → 추가 안 함');
-ok(run(`dtMergeToday(__base,{o:0,h:0,l:0,cur:10200,t:'${today}T08:40:00+09:00'},'${today}')`).length===2,'장 시작 전(시가 0) → 추가 안 함');
-
-// 7. 감지가: 이번 실행 중 '대기'를 본 뒤 돌파한 것만 기록 (오늘 목표가 = 10150 + 0.7×300 = 10360)
-run('kstHm=()=>1000');   // 장중(10:00)으로 고정 — 실제 시각이 장 마감 후면 오늘 봉이 확정돼 장중 시나리오가 성립하지 않음
-run(`portfolio.dt={k:0.7,filt:'none',exit:'nextopen',fee:0.015,amt:1000000,start:'${today}',paper:[],done:{},obs:{},orders:[],codes:[{code:'069500',name:'KODEX 200',etf:true}]}`);
-run(`dtCache.candles={'069500':__base};dtCache.seenWait={};dtCache.newHit=null`);
-run(`dtCache.rt={'069500':{o:10150,h:10340,l:10120,cur:10330,status:'OPEN',t:'${today}T10:00:00+09:00'}};dtCompute()`);
-ok(run("dtCache.sig['069500'].tgt")===10360&&run("dtCache.sig['069500'].hit")===false,'장중 대기: 목표가 10360');
-ok(Object.keys(run('portfolio.dt.obs')).length===0,'대기 중엔 감지가 없음');
-run(`dtCache.rt={'069500':{o:10150,h:10380,l:10120,cur:10375,status:'OPEN',t:'${today}T10:01:00+09:00'}};dtCompute()`);
-ok(run(`portfolio.dt.obs['${today}|069500'].px`)===10375,'대기 → 돌파 감지가 10375 기록');
-ok(run('dtCache.newHit.names[0]')==='KODEX 200','돌파 알림');
-ok(run("dtCache.open['069500'].length")===1&&run("dtCache.open['069500'][0].obs")===10375,'모의 보유에 감지가 연결');
-// 앱을 늦게 열어 이미 돌파된 경우는 감지가 없음
-run(`portfolio.dt.obs={};dtCache.seenWait={};dtCompute()`);
-ok(Object.keys(run('portfolio.dt.obs')).length===0,'처음 본 시점에 이미 돌파 → 감지가 기록 안 함');
-
-// 8. 화면 렌더 (신호·모의매매·설정) — undefined/NaN 없음
-run(`dtCache.seenWait={'069500':'${today}'};dtCompute()`);
-run(`portfolio.dt.paper=[{key:'x',d:'${y2}',code:'069500',name:'KODEX 200',etf:true,k:0.7,filt:'none',exit:'nextopen',amt:1000000,tgt:10000,ent:10005,xd:'${y1}',xp:10100,ret:0.0093,obs:10020}]`);
-run(`portfolio.dt.orders=[{d:'${today}',hm:'10:02',code:'069500',name:'KODEX 200',side:'buy',qty:96,price:10380,broker:'kis',orderNo:'1'}]`);
-for(const sub of['signal','paper','cfg']){
-  run(`tab='daytrade';dtSub='${sub}';render()`);
-  const out=els.app._html;
-  ok(!/undefined|NaN|\[object/.test(out),'단타/'+sub+' 렌더 깨짐 없음');
-  if(sub==='signal')ok(out.includes('돌파 ✓')&&out.includes('⚡ 매수 주문')&&out.includes('청산 대상')&&out.includes('최근 주문'),'신호 화면: 돌파·매수 버튼·청산 대상·최근 주문');
-  if(sub==='paper')ok(out.includes('거래당')&&out.includes('실측 슬리피지'),'모의매매 화면: 성과·실측 슬리피지');
-  if(sub==='cfg')ok(out.includes('0.7 권장')&&out.includes('KODEX 200'),'설정 화면');
-}
-// 필터 제외·시가 대기·데이터 없음 상태
-run(`portfolio.dt.filt='ma20';portfolio.dt.codes.push({code:'005930',name:'삼성전자',etf:false});dtCompute();dtSub='signal';render()`);
+// 5. 화면 신호: 시각 고정(2026-10-13 화 08:40, 장 전) — 미국 월요일 −4% → 오늘 시가 매수
+run("kstNow=()=>new Date(Date.UTC(2026,9,13,8,40))");
+ok(run('kstYmd()')==='2026-10-13'&&run('kstHm()')===840,'테스트 시각 고정');
+sandbox.__usA=[{d:'2026-10-08',c:100},{d:'2026-10-09',c:100},{d:'2026-10-12',c:96}];
+sandbox.__usB=[{d:'2026-10-08',c:500},{d:'2026-10-09',c:500},{d:'2026-10-12',c:510}];
+sandbox.__krA=[{d:'2026-10-08',o:190000,h:192000,l:188000,c:191000},{d:'2026-10-12',o:192000,h:194000,l:190000,c:193000}];
+sandbox.__krB=[{d:'2026-10-08',o:100000,h:101000,l:99000,c:100500},{d:'2026-10-12',o:100500,h:101500,l:100000,c:101000}];
+run(`portfolio.dt={pairs:[{id:'p1',label:'반도체',us:'SOXX',ref:'SOXL',dir:'down',th:3,codes:[{code:'000660',name:'SK하이닉스',etf:false}]},
+  {id:'p2',label:'지수',us:'SPY',ref:'',dir:'down',th:1.5,codes:[{code:'069500',name:'KODEX 200',etf:true}]}],
+  exit:'nextopen',amt:1000000,fee:0.015,start:'2026-10-13',paper:[],done:{},orders:[]}`);
+run(`dtCache.us={SOXX:{bars:__usA,live:null,ok:true},SOXL:{bars:__usA.map(x=>({d:x.d,c:x.c*0.9})),live:null,ok:true},SPY:{bars:__usB,live:null,ok:true}};
+  dtCache.kr={'000660':__krA,'069500':__krB};dtCache.rt={'000660':{o:0,h:0,l:0,cur:193000,status:'CLOSE',t:'2026-10-12T15:30:00+09:00'}};dtCompute()`);
+let v=run("dtCache.sig.p1");
+ok(v&&v.when==='preopen'&&v.hit===true&&near(v.s.chg,-0.04)&&v.ref,'장 전: SOXX −4% → 오늘 시가 매수 신호 '+JSON.stringify(v&&{when:v.when,hit:v.hit}));
+ok(run("dtCache.sig.p2.hit")===false&&run("dtCache.sig.p2.contra")===true,'SPY +2% → 신호 없음 · 급등 매수 보류');
+run("tab='daytrade';dtSub='signal';render()");
 let out=els.app._html;
-ok(!/undefined|NaN/.test(out)&&out.includes('데이터 없음')&&out.includes('개별주·거래세'),'MA20(이력 부족)·데이터 없음·개별주 표시');
-run(`portfolio.dt.filt='none';portfolio.dt.codes.pop();dtCache.rt={};dtCompute();render()`);
+ok(clean(out)&&out.includes('오늘 매수 ✓')&&out.includes('⚡ 매수')&&out.includes('08:30~09:00 시장가 매수')&&out.includes('급등 · 매수 보류')&&out.includes('SOXL'),'신호 화면(장 전)');
+// 장중(10:00): 오늘 봉 생김 → 같은 신호, 모의 보유 1건, 매도 대상 표시
+run("kstNow=()=>new Date(Date.UTC(2026,9,13,10,0))");
+run("dtCache.rt={'000660':{o:186000,h:189000,l:185000,cur:188000,status:'OPEN',t:'2026-10-13T10:00:00+09:00'}};dtCompute()");
+v=run("dtCache.sig.p1");
+ok(v.when==='today'&&v.hit===true,'장중: 오늘 신호 유지');
+ok(run("dtCache.open['p1|000660'].length")===1&&run("dtCache.open['p1|000660'][0].ent")===186000,'모의 보유: 오늘 시가 186,000');
+ok(run("portfolio.dt.done['p2|069500']")==='2026-10-13'||run("portfolio.dt.done['p2|069500']")===undefined,'SPY 쌍: 오늘 신호 없음 처리');
+run("render()");out=els.app._html;
+ok(clean(out)&&out.includes('시가 이후 진입은')&&out.includes('매도 대상')&&out.includes('시가 186,000'),'신호 화면(장중): 시가 이후 안내·매도 대상');
+// 다음 날 시가가 생기면 확정
+run("kstNow=()=>new Date(Date.UTC(2026,9,14,9,5))");
+run("dtCache.kr['000660']=__krA.concat([{d:'2026-10-13',o:186000,h:189000,l:185000,c:188500}]);dtCache.rt={'000660':{o:190000,h:190500,l:189000,cur:190200,status:'OPEN',t:'2026-10-14T09:05:00+09:00'}};dtCache.us.SOXX.bars=__usA.concat([{d:'2026-10-13',c:96.5}]);dtCompute()");
+ok(run('portfolio.dt.paper.length')===1&&run('portfolio.dt.paper[0].xp')===190000,'다음 거래일 시가 190,000 청산 확정');
+// 상승 방향 경고 · 데이터 없음
+run("portfolio.dt.pairs.push({id:'p3',label:'원래안',us:'SOXL',ref:'',dir:'up',th:3,codes:[{code:'005930',name:'삼성전자',etf:false}]});dtCompute();render()");
 out=els.app._html;
-ok(out.includes('시가 대기')&&!/undefined|NaN/.test(out),'장 시작 전 → 시가 대기 + 다음 목표가');
-run(`dtCache.rt={'069500':{o:10150,h:10380,l:10120,cur:10375,status:'OPEN',t:'${today}T10:01:00+09:00'}};dtCompute()`);
+ok(clean(out)&&out.includes('백테스트상 손실')&&out.includes('데이터 없음'),'상승 방향 경고 · 데이터 없는 쌍');
+// 모의매매·설정 화면
+for(const sub of['paper','cfg']){run(`dtSub='${sub}';render()`);out=els.app._html;ok(clean(out),'단타/'+sub+' 렌더');
+  if(sub==='paper')ok(out.includes('거래당')&&out.includes('반도체 (SOXX)'),'모의매매: 성과·쌍별');
+  if(sub==='cfg')ok(out.includes('하락 후 매수 (권장)')&&out.includes('기본 2쌍 합산')&&out.includes('dtPU_p1'),'설정: 쌍 편집·백테스트 표');}
 
-// 9. 주문 모달 (B): 키 없으면 안내, 있으면 지정가 = max(현재가, 목표가), 수량 = 1회 금액 ÷ 가격
-alerts.length=0;run("dtOrder('069500','buy')");
+// 6. 설정 편집
+vals.dtPL_p2='지수2';vals.dtPU_p2='qqq';vals.dtPR_p2='';vals.dtPT_p2='2';
+run("dtSavePair('p2')");
+ok(run("JSON.stringify(dtPair('p2'))").includes('"us":"QQQ"')&&run("dtPair('p2').th")===2&&run("dtPair('p2').label")==='지수2','쌍 저장: 티커 대문자·기준·이름');
+vals.dtPT_p2='0';alerts.length=0;run("dtSavePair('p2')");
+ok(alerts.length===1&&run("dtPair('p2').th")===2,'기준 0 이하 거부');
+run("dtPairDir('p2','up')");ok(run("dtPair('p2').dir")==='up','방향 전환(확인 후)');
+const n0=run('portfolio.dt.pairs.length');run("dtAddPair()");ok(run('portfolio.dt.pairs.length')===n0+1,'쌍 추가');
+run("dtRemovePair(portfolio.dt.pairs[portfolio.dt.pairs.length-1].id)");ok(run('portfolio.dt.pairs.length')===n0,'쌍 삭제');
+run("dtRemoveCode('p3','005930')");ok(run("dtPair('p3').codes.length")===0,'종목 삭제');
+
+// 7. 주문 모달 (B)
+run("kstNow=()=>new Date(Date.UTC(2026,9,14,8,40))");   // 장 전
+alerts.length=0;run("dtOrder('000660','buy')");
 ok(alerts.length===1&&/API 키/.test(alerts[0]),'증권사 키 없으면 안내');
 sandbox.window.KisBridge.hasKeys=()=>true;
-run("dtOrder('069500','buy')");
-ok(run('window._dtOrder.price')===10375&&run('window._dtOrder.qty')===Math.floor(1000000/10375)&&run('window._dtOrder.type')==='limit','매수 기본값: 지정가 10375 · 96주');
-const modal=els['modal-root']._html;
-ok(modal.includes('매수 주문 전송')&&modal.includes('목표가 10,360')&&!/undefined|NaN/.test(modal),'주문 모달 렌더');
-run("dtOrdSet('type','market')");
-ok(!els['modal-root']._html.includes('id="dtPrice"'),'시장가 → 가격 입력 숨김');
-run("dtOrdSet('type','limit')");
-// 호가단위 위반 → 전송 안 함
+run("dtCache.rt={'000660':{o:0,h:0,l:0,cur:188500,status:'CLOSE',t:'2026-10-13T15:30:00+09:00'}}");
+run("dtOrder('000660','buy')");
+ok(run('window._dtOrder.type')==='market'&&run('window._dtOrder.qty')===Math.floor(1000000/188500),'장 전 매수: 시장가 · 5주');
+let modal=els['modal-root']._html;
+ok(clean(modal)&&modal.includes('09:00 시가에 체결')&&!modal.includes('id="dtPrice"'),'장 전 모달: 시가 체결 안내·가격 입력 없음');
+run("kstNow=()=>new Date(Date.UTC(2026,9,14,10,0))");
+run("dtOrder('000660','buy')");
+ok(run('window._dtOrder.type')==='limit'&&els['modal-root']._html.includes('시가 이후 매수는'),'장중 매수: 지정가 + 안내');
 run("sendBrokerOrder=async(...a)=>{__sent=a;return 'A1';}");
-vals.dtQty='96';vals.dtPrice='10377';alerts.length=0;
+vals.dtQty='5';vals.dtPrice='188550';alerts.length=0;
 await run('confirmDtOrder()');
-ok(alerts.some(a=>/호가단위/.test(a))&&run('portfolio.dt.orders.length')===1,'호가단위 위반 가격은 전송 안 함');
-vals.dtPrice='10375';
+ok(alerts.some(a=>/호가단위/.test(a))&&run('portfolio.dt.orders.length')===0,'호가단위(100원) 위반 가격은 전송 안 함');
+vals.dtPrice='188500';
 await run('confirmDtOrder()');
-ok(run('portfolio.dt.orders.length')===2&&run('portfolio.dt.orders[1].orderNo')==='A1','주문 전송 후 기록');
-ok(JSON.stringify(run('__sent'))===JSON.stringify(['kis','buy','069500',false,96,10375]),'증권사 전송 인자: '+JSON.stringify(run('__sent')));
-// 매도: 최근 매수 수량을 기본값으로, 시장가
-run("dtOrder('069500','sell')");
-ok(run('window._dtOrder.qty')===96&&run('window._dtOrder.type')==='market','매도 기본값: 최근 매수 96주 · 시장가');
+ok(run('portfolio.dt.orders.length')===1&&run('portfolio.dt.orders[0].orderNo')==='A1'&&JSON.stringify(run('__sent'))===JSON.stringify(['kis','buy','000660',false,5,188500]),'주문 전송·기록 '+JSON.stringify(run('__sent')));
+run("dtOrder('000660','sell')");
+ok(run('window._dtOrder.qty')===5&&run('window._dtOrder.type')==='market','매도 기본값: 최근 매수 5주 · 시장가');
 
-// 10. 마이그레이션: 단타 상태 기본값, 기존 값 유지
-const mig=run(`migratePortfolio({ver:'5.5',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
-ok(mig.ver==='6.0'&&mig.dt.k===0.7&&mig.dt.exit==='nextopen'&&mig.dt.codes.length===4&&mig.dt.codes.every(c=>c.etf)&&mig.dt.start===today,'v5.5 → 단타 기본값(ETF 4종, k 0.7, 다음날 시가) · 시작일 오늘');
-const kept=run(`migratePortfolio({ver:'6.0',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],dt:{k:0.5,filt:'ma20',exit:'close',amt:500000,fee:0.01,start:'2026-09-01',codes:[{code:'069500',name:'KODEX 200',etf:true}],paper:[{key:'a'}]}})`);
-ok(kept.dt.k===0.5&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.obs==='object','기존 단타 설정·기록 유지 + 누락 필드 보완');
+// 8. 마이그레이션: v6.0(변동성 돌파 구조) → 새 기본 쌍, 주문 기록만 유지
+const mig=run(`migratePortfolio({ver:'6.0',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
+  dt:{codes:[{code:'069500'}],k:0.7,filt:'none',exit:'nextopen',amt:1000000,fee:0.015,start:'2026-10-01',paper:[{key:'old'}],done:{'069500':'2026-10-10'},obs:{},orders:[{d:'2026-10-12',code:'069500'}]}})`);
+ok(mig.ver==='6.1'&&mig.dt.pairs.length===2&&mig.dt.pairs[0].us==='SOXX'&&mig.dt.pairs[0].th===3&&mig.dt.pairs[1].us==='SPY'&&mig.dt.pairs[1].th===1.5,'v6.0 → 기본 2쌍(SOXX −3%, SPY −1.5%)');
+ok(mig.dt.paper.length===0&&mig.dt.orders.length===1&&mig.dt.start===run('kstYmd()')&&!mig.dt.codes,'모의매매 새로 시작 · 주문 기록 유지');
+const kept=run(`migratePortfolio({ver:'6.1',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
+  dt:{pairs:[{id:'x',us:'QQQ',dir:'down',th:2,codes:[]}],exit:'close',amt:500000,fee:0.01,start:'2026-09-01',paper:[{key:'a'}]}})`);
+ok(kept.dt.pairs.length===1&&kept.dt.pairs[0].us==='QQQ'&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.done==='object','v6.1 설정·기록 유지 + 누락 필드 보완');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

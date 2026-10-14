@@ -1,5 +1,5 @@
-# 원자료 → ./data  (국내: 네이버 fchart 일봉 수정주가 최대 3000봉 / 코인: 업비트 일봉·5분봉)
-#   python3 fetch.py          국내만 (약 1분)
+# 원자료 → ./data  (국내: 네이버 fchart 일봉 수정주가 최대 3000봉 / 미국: 야후 일봉 / 코인: 업비트 일봉·5분봉)
+#   python3 fetch.py          국내 + 미국 (약 1분)
 #   python3 fetch.py --upbit  업비트 포함 (5분봉 1년치는 마켓당 약 10분)
 import json, re, sys, time, urllib.request, pandas as pd
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +10,9 @@ ETF={'069500':'KODEX 200','229200':'KODEX 코스닥150','122630':'KODEX 레버�
 # 개별주: 앱 보유·워치리스트 국내 종목 + KOSPI/KOSDAQ 시총 상위(현존 — 생존편향 있음)
 STK='''237690 에스티팜|000250 삼천당제약|010120 LS ELECTRIC|005930 삼성전자|066570 LG전자|067630 HLB생명과학|000660 SK하이닉스|373220 LG에너지솔루션|403870 HPSP|058470 리노공업|140860 파크시스템스|105560 KB금융|000270 기아|329180 HD현대중공업|247540 에코프로비엠|196170 알테오젠|263750 펄어비스|033780 KT&G|097950 CJ제일제당|000080 하이트진로|005380 현대차|005490 POSCO홀딩스|012450 한화에어로스페이스|035420 NAVER|035720 카카오|051910 LG화학|207940 삼성바이오로직스|068270 셀트리온|006400 삼성SDI|055550 신한지주|028260 삼성물산|012330 현대모비스|096770 SK이노베이션|017670 SK텔레콤|030200 KT|003550 LG|034730 SK|015760 한국전력|032830 삼성생명|086790 하나금융지주|018260 삼성에스디에스|009150 삼성전기|010950 S-Oil|011200 HMM|042660 한화오션|009540 HD한국조선해양|034020 두산에너빌리티|064350 현대로템|298040 효성중공업|267260 HD현대일렉트릭|042700 한미반도체|086520 에코프로|028300 HLB|041510 에스엠|352820 하이브|036570 엔씨소프트|259960 크래프톤|000810 삼성화재|024110 기업은행|010130 고려아연|003670 포스코퓨처엠|066970 엘앤에프|293490 카카오게임즈|112040 위메이드|047050 포스코인터내셔널|011170 롯데케미칼|323410 카카오뱅크|251270 넷마블|161390 한국타이어앤테크놀로지|000720 현대건설'''
 STK=dict(x.split(' ',1) for x in STK.split('|'))
+# 미국: 섹터 ETF·대형주 (us_signal.py) + 워치리스트 해외 6종목
+US=['SOXX','SOXL','SMH','MU','NVDA','QQQ','TQQQ','SPY','EWY','XLK','XLE','XLF','KBE','ITA','IBB','XBI','LIT','TSLA','GM','XME','ETN','VRT',
+    'MSFT','AMZN','AAPL','JPM','XOM']
 def read(url,enc='utf-8'):
     for i in range(6):
         try:
@@ -40,6 +43,10 @@ if __name__=='__main__':
     pd.DataFrame(meta,columns=['code','name','type']).to_csv('data/kr/universe.csv',index=False)
     with ThreadPoolExecutor(8) as ex:
         for r in ex.map(kr,[m[0] for m in meta]): print(*r)
+    os.makedirs('data/us',exist_ok=True)
+    for t in US:
+        open(f'data/us/{t}.json','w').write(read(f'https://query1.finance.yahoo.com/v8/finance/chart/{t}?period1=1388534400&period2=9999999999&interval=1d')); time.sleep(0.4)
+    print('미국',len(US),'종목')
     if '--upbit' in sys.argv:
         for m in ['KRW-BTC','KRW-ETH','KRW-XRP']:
             upbit(m,'days','2017-10-01').to_csv(f'data/upbit/{m}_D.csv',index=False)
