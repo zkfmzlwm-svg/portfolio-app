@@ -111,7 +111,7 @@ ok(v&&v.when==='preopen'&&v.hit===true&&near(v.s.chg,-0.04)&&v.ref,'장 전: SOX
 ok(run("dtCache.sig.p2.hit")===false&&run("dtCache.sig.p2.contra")===true,'SPY +2% → 신호 없음 · 급등 매수 보류');
 run("tab='daytrade';dtSub='signal';render()");
 let out=els.app._html;
-ok(clean(out)&&out.includes('오늘 매수 ✓')&&out.includes('⚡ 매수')&&out.includes('08:30~09:00 시장가 매수')&&out.includes('급등 · 매수 보류')&&out.includes('SOXL'),'신호 화면(장 전)');
+ok(clean(out)&&out.includes('오늘 매수 ✓')&&out.includes('⚡ 매매')&&out.includes('08:30~09:00 시장가 매수')&&out.includes('급등 · 매수 보류')&&out.includes('SOXL'),'신호 화면(장 전)');
 // 장중(10:00): 오늘 봉 생김 → 같은 신호, 모의 보유 1건, 매도 대상 표시
 run("kstNow=()=>new Date(Date.UTC(2026,9,13,10,0))");
 run("dtCache.rt={'000660':{o:186000,h:189000,l:185000,cur:188000,status:'OPEN',t:'2026-10-13T10:00:00+09:00'}};dtCompute()");
@@ -167,6 +167,34 @@ await run('confirmDtOrder()');
 ok(run('portfolio.dt.orders.length')===1&&run('portfolio.dt.orders[0].orderNo')==='A1'&&JSON.stringify(run('__sent'))===JSON.stringify(['kis','buy','000660',false,5,188500]),'주문 전송·기록 '+JSON.stringify(run('__sent')));
 run("dtOrder('000660','sell')");
 ok(run('window._dtOrder.qty')===5&&run('window._dtOrder.type')==='market','매도 기본값: 최근 매수 5주 · 시장가');
+
+// 9. 내 보유현황(증권사 잔고) + ⚡ 매매 (v6.2)
+{const kb=run('dtBalRows')('kis',{rt_cd:'0',rows:[{pdno:'000660',prdt_name:'SK하이닉스',hldg_qty:'2',ord_psbl_qty:'2',pchs_avg_pric:'190000.0000',prpr:'188500'},
+   {pdno:'069500',prdt_name:'KODEX 200',hldg_qty:'0',ord_psbl_qty:'0',pchs_avg_pric:'0',prpr:'40000'}]});
+ ok(kb.length===1&&kb[0].code==='000660'&&kb[0].qty===2&&kb[0].avg===190000&&kb[0].cur===188500&&kb[0].broker==='kis','한투 잔고 파싱(0주 제외) '+JSON.stringify(kb));
+ const wb=run('dtBalRows')('kiwoom',{return_code:0,acnt_evlt_remn_indv_tot:[{stk_cd:'A005930',stk_nm:'삼성전자',rmnd_qty:'000000000000005',trde_able_qty:'000000000000003',pur_pric:'000000000095000',cur_prc:'-97000'}]});
+ ok(wb.length===1&&wb[0].code==='005930'&&wb[0].qty===5&&wb[0].sellable===3&&wb[0].avg===95000&&wb[0].cur===97000,'키움 잔고 파싱(A 접두·0 채움·부호) '+JSON.stringify(wb));}
+run("dtRefresh=async()=>{}");
+sandbox.window.KisBridge.balance=(demo,id)=>{sandbox.window.KisBridge.fetch=()=>JSON.stringify({rt_cd:'0',rows:[
+  {pdno:'000660',prdt_name:'SK하이닉스',hldg_qty:'2',ord_psbl_qty:'2',pchs_avg_pric:'190000',prpr:'188000'},
+  {pdno:'005930',prdt_name:'삼성전자',hldg_qty:'5',ord_psbl_qty:'5',pchs_avg_pric:'95000',prpr:'97000'},
+  {pdno:'360750',prdt_name:'TIGER 미국S&P500',hldg_qty:'3',ord_psbl_qty:'1',pchs_avg_pric:'20000',prpr:'21000'}]});sandbox.window.KisBridge._deliver(id);};
+await run('dtLoadBalance()');
+ok(run('portfolio.dt.bal.rows.length')===3&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(run('portfolio.dt.bal.at.kis'))&&JSON.parse(sandbox.localStorage._d.porto).dt.bal.rows.length===3,'보유 불러오기 → 저장');
+run("dtCache.rt={'000660':{o:0,h:0,l:0,cur:188500,status:'OPEN',t:''}}");
+run("tab='daytrade';dtSub='signal';render()");
+out=els.app._html;
+ok(clean(out)&&out.includes('내 보유현황')&&out.includes('보유수량')&&out.includes('평균단가')&&out.includes('2주')&&out.includes('매도가능 1주'),'보유현황 카드 렌더');
+ok(out.includes('color:#FF4D67">-3,000')&&out.includes('color:#22D07A">+10,000'),'손익금액: 손해 빨강(실시간가 188,500 반영)/이익 초록');
+ok(out.includes('보유 2주')&&(out.match(/⚡ 매매/g)||[]).length>=5,'종목쌍 행·보유 카드 모두 ⚡ 매매');
+run("dtOrder('000660','sell')");
+ok(run('window._dtOrder.qty')===2&&run('window._dtOrder.type')==='market'&&els['modal-root']._html.includes('보유 2주'),'매도 기본값: 잔고 매도가능 2주 우선');
+run("dtOrdSet('side','buy')");
+ok(run('window._dtOrder.side')==='buy'&&run('window._dtOrder.qty')===Math.floor(1000000/188500)&&run('window._dtOrder.type')==='limit','매수로 전환 → 1회 금액 수량·지정가(장중)');
+run("dtOrdSet('side','sell')");ok(run('window._dtOrder.qty')===2,'다시 매도 → 잔고 수량');
+run("dtOrder('360750','sell')");
+ok(run("dtFindCode('360750').name")==='TIGER 미국S&P500'&&run("dtFindCode('360750').etf")===true&&run('window._dtOrder.qty')===1,'종목쌍 밖 보유 종목: 이름·ETF·매도가능 1주');
+run("closeModal()");
 
 // 8. 마이그레이션: v6.0(변동성 돌파 구조) → 새 기본 쌍, 주문 기록만 유지
 const mig=run(`migratePortfolio({ver:'6.0',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],

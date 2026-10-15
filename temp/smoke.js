@@ -292,6 +292,21 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("rebalScheduleCard({rows:rebalRows(),br:bandBreaches(),level:'due',sc:rebalSchedule(new Date(2026,5,10))})").includes('이번 달 정기 리밸런싱 (6월)'),'6월 정기 카드');
 }
 
+// v6.2: 종목 카드 = 손익금액·손익% + 보유수량/평균단가/현재가/평가금액, 다크/라이트 테마
+{run("portfolio=JSON.parse(JSON.stringify(INIT));catH='kr'");
+ const hs=run('holdingsScreen()');
+ ok(hs.includes('보유수량')&&hs.includes('평균단가')&&hs.includes('현재가')&&hs.includes('평가금액')&&!/>손익</.test(hs)&&!hs.includes('× '),'종목 카드 4칸: 보유수량·평균단가·현재가·평가금액');
+ const h=run("portfolio.holdings.kr_stocks.find(x=>x.qty>0&&x.cur!==x.avg)"),pnl=Math.round(h.qty*h.cur-h.qty*h.avg);
+ ok(hs.includes(`color:${pnl>0?'#22D07A':'#FF4D67'}">${pnl>0?'+':''}${run('won')(pnl)}<`),'오른쪽 손익금액(이익 초록/손해 빨강): '+h.name+' '+pnl);
+ ok(run("pnlBox(-1234.4,-1.5)").includes('color:#FF4D67">-1,234<')&&run("pnlBox(500,2)").includes('color:#22D07A">+500<'),'pnlBox 색·부호');
+ ok(run("fmtQty(5,'주')")==='5주'&&run("fmtQty(0.05898512)")==='0.05898512'&&run("fmtQty(1920.043087)")==='1920.0431'&&run("fmtQty(1234)")==='1,234','수량 표기');
+ run("setTheme('light')");
+ ok(run('uiTheme')==='light'&&run('T.bg')==='#EEF1F6'&&run('T.card')==='#FFFFFF'&&sandbox.localStorage._d.ui_theme==='light','라이트 테마 적용·저장');
+ ok(run('settingsScreen()').includes("setTheme('light')")&&run('settingsScreen()').includes('라이트 모드'),'설정 탭 테마 선택');
+ ok(run('btn("x","f()",T.bg3)').includes('color:'+run('T.text')),'중립 배경 버튼 글자색 = 본문색');
+ run("setTheme('dark')");ok(run('T.bg')==='#04080F'&&run('T.green')==='#22D07A','다크 복귀');
+ run("applyTheme('bogus')");ok(run('uiTheme')==='dark','알 수 없는 테마 → 다크');}
+
 // 8. 렌더 스모크 (예외 없이 모든 탭/모달 렌더)
 run("portfolio=migratePortfolio(JSON.parse(localStorage.getItem('porto'))||JSON.parse(JSON.stringify(INIT)))");
 // 주의: 위에서 직렬화된 포트폴리오 사용
