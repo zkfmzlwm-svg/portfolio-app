@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.1.2</title>
+<title>포트폴리오 v6.2</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
+html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
 .mono{font-family:'Menlo','Consolas',monospace}
 ::-webkit-scrollbar{display:none}
-input[type=range]{-webkit-appearance:none;height:5px;border-radius:3px;outline:none;cursor:pointer;width:100%;background:#1A2845}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#00BFA6;box-shadow:0 0 8px #00BFA644}
+input[type=range]{-webkit-appearance:none;height:5px;border-radius:3px;outline:none;cursor:pointer;width:100%;background:var(--track,#1A2845)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--teal,#00BFA6);box-shadow:0 0 8px rgba(0,191,166,.27)}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
@@ -18,23 +18,40 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .spin{display:inline-block;animation:spin .7s linear infinite}
 .pulse{animation:pulse 1.5s infinite}
 .scr{overflow-y:auto;-webkit-overflow-scrolling:touch}
-input[type=text],input[type=number]{background:#0C1524;border:1px solid #172033;border-radius:10px;color:#ECF1FF;padding:10px 12px;font-size:14px;outline:none;width:100%}
-input[type=text]:focus,input[type=number]:focus{border-color:#00BFA6}
+input[type=text],input[type=number]{background:var(--input,#0C1524);border:1px solid var(--border,#172033);border-radius:10px;color:var(--text,#ECF1FF);padding:10px 12px;font-size:14px;outline:none;width:100%}
+input[type=text]:focus,input[type=number]:focus{border-color:var(--teal,#00BFA6)}
 button{cursor:pointer;font-family:inherit;border:none;outline:none}
 .tap:active{opacity:.7;transform:scale(.97)}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:flex-end}
-.sheet{background:#0C1524;border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 16px 40px}
-.sheet-handle{width:40px;height:4px;background:#2A3A50;border-radius:2px;margin:0 auto 20px}
+.sheet{background:var(--sheet,#0C1524);border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 16px 40px}
+.sheet-handle{width:40px;height:4px;background:var(--handle,#2A3A50);border-radius:2px;margin:0 auto 20px}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="modal-root"></div>
 <script>
-// ── 테마 ──
-const T={bg:'#04080F',bg2:'#0A1220',bg3:'#0C1524',card:'#0F1C2E',border:'#172033',
-  teal:'#00BFA6',blue:'#4E8EFF',green:'#22D07A',red:'#FF4D67',
-  amber:'#FFB020',purple:'#A78BFA',text:'#ECF1FF',text2:'#697FA0',text3:'#3D4F68'};
+// ── 테마 ── 설정 탭에서 다크/라이트 선택(기기 설정 'ui_theme', 백업·초기화와 무관). 화면은 렌더 때마다 T를 읽는다
+const THEMES={
+  dark:{bg:'#04080F',bg2:'#0A1220',bg3:'#0C1524',card:'#0F1C2E',border:'#172033',
+    teal:'#00BFA6',blue:'#4E8EFF',green:'#22D07A',red:'#FF4D67',
+    amber:'#FFB020',purple:'#A78BFA',text:'#ECF1FF',text2:'#697FA0',text3:'#3D4F68',
+    track:'#1A2845',handle:'#2A3A50',hero1:'#0D1E36',hero2:'#0C2040',heroB:'#1A3050',sheet:'#0C1524',input:'#0C1524'},
+  light:{bg:'#EEF1F6',bg2:'#F4F6FA',bg3:'#E4E9F0',card:'#FFFFFF',border:'#D9DFE8',
+    teal:'#008C77',blue:'#2F6BDB',green:'#0B8A4C',red:'#D92D45',
+    amber:'#B87400',purple:'#6D4FD1',text:'#101828',text2:'#4A5A73',text3:'#7B889C',
+    track:'#D3DAE5',handle:'#C3CBD8',hero1:'#FFFFFF',hero2:'#EAF2FF',heroB:'#D5E0F0',sheet:'#FFFFFF',input:'#F4F6FA'}
+};
+const T=Object.assign({},THEMES.dark);
+let uiTheme='dark';
+function applyTheme(name){
+  uiTheme=THEMES[name]?name:'dark';
+  Object.assign(T,THEMES[uiTheme]);
+  const r=typeof document!=='undefined'&&document.documentElement;
+  if(r&&r.style&&r.style.setProperty)Object.keys(T).forEach(k=>r.style.setProperty('--'+k,T[k]));
+  // 상태바·내비게이션바 색 (앱 쉘)
+  try{if(window.UiBridge&&window.UiBridge.setBars)window.UiBridge.setBars(T.bg,T.bg2,uiTheme==='light');}catch(e){}
+}
 
 const TAG_COLOR={'수출주':'#00BFA6','내수주':'#22D07A','성장주':'#4E8EFF',
   '가치주':'#FFB020','대형주':'#697FA0','소형주':'#A78BFA','헤지':'#FF4D67','지수':'#8A94A6'};
@@ -50,6 +67,8 @@ const Store={
   get:k=>window.NativeStorage?NativeStorage.get(k):localStorage.getItem(k),
   set:(k,v)=>{if(window.NativeStorage)NativeStorage.set(k,v);else localStorage.setItem(k,v);}
 };
+applyTheme(Store.get('ui_theme')||'dark');
+function setTheme(name){Store.set('ui_theme',name);applyTheme(name);render();}
 
 // ── HttpBridge 콜백 저장소 (MainActivity _deliver/_fail 프로토콜) ──
 window._httpCallbacks={};
@@ -159,6 +178,7 @@ function kisCall(method,...args){
 }
 const kisTestConnection=demo=>kisCall('testConnection',demo);
 const kisPlaceOrder=(demo,side,pdno,ordDvsn,qty,price)=>kisCall('placeOrder',demo,side,pdno,ordDvsn,String(qty),String(price));
+const kisBalance=demo=>kisCall('balance',demo);
 
 window._kiwoomCallbacks={};
 window.KiwoomBridge=window.KiwoomBridge||{};
@@ -189,6 +209,7 @@ function kiwoomCall(method,...args){
 }
 const kiwoomTestConnection=mock=>kiwoomCall('testConnection',mock);
 const kiwoomPlaceOrder=(mock,side,stkCd,trdeTp,qty,price)=>kiwoomCall('placeOrder',mock,side,stkCd,trdeTp,String(qty),String(price));
+const kiwoomBalance=mock=>kiwoomCall('balance',mock);
 
 // ── 고정 목표비중 (국면 무관) ──
 // 근거: 2003-01~2026-09 월간 KRW 백테스트 (analysis/regime_weights/static.py·robust.py·candidates.py)
@@ -707,7 +728,18 @@ const pct=n=>n==null?'—':`${n>=0?'+':''}${n.toFixed(2)}%`;
 const pctC=n=>n>0?T.green:n<0?T.red:T.text2;
 const secL=t=>`<div style="font-size:11px;font-weight:700;color:${T.text3};letter-spacing:.1em;padding:14px 0 8px">${t}</div>`;
 const card=(c,ex='')=>`<div style="background:${T.card};border-radius:14px;padding:14px 16px;border:1px solid ${T.border};margin-bottom:8px;${ex}">${c}</div>`;
-const btn=(l,fn,c,ex='')=>`<button onclick="${fn}" class="tap" style="width:100%;padding:13px;background:${c};color:${c===T.amber||c===T.green?'#000':'#fff'};border-radius:12px;font-size:14px;font-weight:700;${ex}">${l}</button>`;
+const btn=(l,fn,c,ex='')=>`<button onclick="${fn}" class="tap" style="width:100%;padding:13px;background:${c};color:${c===T.amber||c===T.green?'#000':c===T.bg2||c===T.bg3||c===T.card?T.text:'#fff'};border-radius:12px;font-size:14px;font-weight:700;${ex}">${l}</button>`;
+
+// 보유 카드 공통 형식(종목 탭·단타 탭): 오른쪽 손익금액·손익%(이익 초록/손해 빨강) + 보유수량·평균단가·현재가·평가금액 2×2
+const fmtQty=(q,unit)=>q==null||!isFinite(q)?'—':(Number.isInteger(q)?q.toLocaleString('ko-KR'):q<1?String(+q.toFixed(8)):String(+q.toFixed(4)))+(unit||'');
+function pnlBox(pnl,pnlP){
+  if(pnl==null||!isFinite(pnl))return '';
+  const c=pctC(pnl),r=Math.round(pnl);
+  return `<div style="text-align:right"><div class="mono" style="font-size:15px;font-weight:700;color:${c}">${r>0?'+':''}${won(r)}</div>${pnlP!=null&&isFinite(pnlP)?`<div class="mono" style="font-size:12px;color:${c}">${pct(pnlP)}</div>`:''}</div>`;
+}
+function holdGrid(cells){
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">${cells.map(([k,v])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:13px;color:${T.text};font-weight:600">${v}</div></div>`).join('')}</div>`;
+}
 
 function renderTags(tags){
   if(!tags||!tags.length)return'';
@@ -1440,7 +1472,7 @@ function homeScreen(){
   const sig=overallSignal();
   const rPnl=realizedPnl();
   return `<div class="scr fade" style="padding:0 16px 24px;height:100%">
-    <div style="background:linear-gradient(135deg,#0D1E36,#0C2040);border-radius:20px;padding:22px 18px;margin-bottom:10px;border:1px solid #1A3050">
+    <div style="background:linear-gradient(135deg,${T.hero1},${T.hero2});border-radius:20px;padding:22px 18px;margin-bottom:10px;border:1px solid ${T.heroB}">
       <div style="font-size:12px;color:${T.text2};margin-bottom:4px">총 포트폴리오 (미실현)</div>
       <div class="mono" style="font-size:34px;font-weight:700;color:${T.text};margin-bottom:6px">₩${won(c.total,true)}</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -1510,11 +1542,10 @@ function holdingsScreen(){
                 ${isWatch&&h.pinned?`<span style="font-size:11px" title="자동 제외 대상에서 제외됨">📌</span>`:''}
                 ${!isWatch&&h.keep?`<span style="font-size:10px;padding:2px 7px;border-radius:20px;background:${T.amber}22;color:${T.amber};font-weight:700;white-space:nowrap">🔒 장기보유</span>`:''}
               </div>
-              ${!isWatch?`<span class="mono" style="font-size:11px;color:${T.text3}">× ${h.qty<1?h.qty.toFixed(6):h.qty.toFixed(2)}</span>`:
-              entryStatus?`<span style="font-size:11px;color:${entryColor};font-weight:700">${entryStatus}</span>`:''}
+              ${isWatch&&entryStatus?`<span style="font-size:11px;color:${entryColor};font-weight:700">${entryStatus}</span>`:''}
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-              ${ev!=null?`<div style="text-align:right"><div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${won(ev,true)}</div>${pnlP!=null?`<div class="mono" style="font-size:12px;color:${pctC(pnlP)}">${pct(pnlP)}</div>`:''}</div>`:`<div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${h.usd?usd(h.cur):won(h.cur)}</div>`}
+              ${ev!=null?pnlBox(pnl2,pnlP):`<div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${h.usd?usd(h.cur):won(h.cur)}</div>`}
               ${isWatch?`<button onclick="togglePinWatch('${h.id}')" style="background:${h.pinned?T.amber+'33':T.bg3};color:${h.pinned?T.amber:T.text2};border:none;border-radius:8px;padding:6px 8px;font-size:12px">📌</button>`
                 :`<button onclick="toggleKeep('${h.id}')" title="장기보유: 리밸런싱·스위칭 제외" style="background:${h.keep?T.amber+'33':T.bg3};color:${h.keep?T.amber:T.text2};border:none;border-radius:8px;padding:6px 8px;font-size:12px">🔒</button>`}
               <button onclick="showEditModal('${catH}','${h.id}')" style="background:${T.bg3};color:${T.text2};border:none;border-radius:8px;padding:6px 8px;font-size:12px">✎</button>
@@ -1531,11 +1562,7 @@ function holdingsScreen(){
           ${isWatch?`<button onclick="transferToHolding('${h.id}')" class="tap" style="width:100%;padding:10px;background:${T.teal}22;color:${T.teal};border:1px solid ${T.teal}44;border-radius:10px;font-size:13px;font-weight:700;margin-top:4px">
             ⬇ 내 종목으로 이전 (매수 반영)
           </button>`:''}
-          ${!isWatch&&!isCrypto?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
-            ${[['현재가',useUsd?usd(curP):won(curP)],['평균단가',useUsd?usd(avgP):won(avgP)],['평가금액',won(ev)],['손익',(pnl2!=null?(pnl2>=0?'+':'')+won(pnl2,true):'—')]].map(([k,v])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${T.text};font-weight:600">${v}</div></div>`).join('')}
-          </div>`:isCrypto?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
-            ${[['현재가',won(h.cur)],['수량',h.qty.toFixed(8)],['평가금액',won(h.qty*h.cur,true)],['손익',won(h.qty*(h.cur-h.avg),true)]].map(([k,v])=>`<div style="background:${T.bg2};border-radius:8px;padding:7px 10px"><div style="font-size:10px;color:${T.text3}">${k}</div><div class="mono" style="font-size:12px;color:${T.text}">${v}</div></div>`).join('')}
-          </div>`:''}
+          ${!isWatch?holdGrid([['보유수량',fmtQty(h.qty,kind==='kr'||kind==='us'?'주':'')],['평균단가',useUsd?usd(avgP):won(avgP)],['현재가',useUsd?usd(curP):won(curP)],['평가금액',won(Math.round(ev))]]):''}
           ${!isWatch?`<div style="display:flex;gap:6px;margin-top:8px">
             <button onclick="showTradeModal('${kind}','${h.id}','buy')" class="tap" style="flex:1;padding:9px;background:${T.green}1F;color:${T.green};border:1px solid ${T.green}44;border-radius:10px;font-size:12px;font-weight:700">＋ 매수 반영</button>
             <button onclick="showTradeModal('${kind}','${h.id}','sell')" class="tap" style="flex:1;padding:9px;background:${T.red}1A;color:${T.red};border:1px solid ${T.red}44;border-radius:10px;font-size:12px;font-weight:700">－ 매도 반영</button>
@@ -1773,7 +1800,7 @@ function rebalScreen(){
     </div>
     <input type="range" id="mSlider" min="50" max="500" step="10" value="${monthly}"
       oninput="monthly=+this.value;renderAllocCards()" onchange="setMonthly(this.value)"
-      style="background:linear-gradient(to right,${T.teal} ${slPct}%,#1A2845 ${slPct}%)">
+      style="background:linear-gradient(to right,${T.teal} ${slPct}%,${T.track} ${slPct}%)">
     <div style="display:flex;justify-content:space-between;font-size:11px;color:${T.text3};margin-top:8px">
       <span>50만</span><span>200만</span><span>350만</span><span>500만</span>
     </div>`)}
@@ -1910,7 +1937,7 @@ function saveTargets(){
 function renderAllocCards(){
   const plan=newMoneyPlan(monthly*10000);
   const mEl=document.getElementById('mLabel');if(mEl)mEl.textContent=monthly+'만원';
-  const sl=document.getElementById('mSlider');if(sl){const p=((monthly-50)/450*100).toFixed(0);sl.style.background=`linear-gradient(to right,${T.teal} ${p}%,#1A2845 ${p}%)`;}
+  const sl=document.getElementById('mSlider');if(sl){const p=((monthly-50)/450*100).toFixed(0);sl.style.background=`linear-gradient(to right,${T.teal} ${p}%,${T.track} ${p}%)`;}
   const tm=document.querySelector('#targetMonths .mono');
   if(tm)tm.innerHTML=`${plan.months}개월<span style="font-size:13px;color:${T.text3};font-weight:400"> (약 ${(plan.months/12).toFixed(1)}년)</span>`;
   const el=document.getElementById('allocCards');
@@ -1962,10 +1989,67 @@ function dtState(){
   if(!portfolio.dt||!Array.isArray(portfolio.dt.pairs)){portfolio.dt=JSON.parse(JSON.stringify(DT_DEFAULT));portfolio.dt.start=kstYmd();}
   return portfolio.dt;
 }
-const dtCache={kr:{},us:{},usAt:0,day:null,from:null,fetchHm:{},rt:{},rtAt:0,series:{},sig:{},open:{},busy:false,err:null};
+const dtCache={kr:{},us:{},usAt:0,day:null,from:null,fetchHm:{},rt:{},rtAt:0,series:{},sig:{},open:{},busy:false,err:null,balBusy:false,balErr:null};
 let dtSub='signal',dtTimer=null;
 function dtAllCodes(dt){const seen={},out=[];dt.pairs.forEach(p=>p.codes.forEach(m=>{if(!seen[m.code]){seen[m.code]=1;out.push(m);}}));return out;}
-function dtFindCode(code){return dtAllCodes(dtState()).find(m=>m.code===code)||{code,name:code,etf:false};}
+function dtFindCode(code){
+  const m=dtAllCodes(dtState()).find(m=>m.code===code);if(m)return m;
+  const b=dtBalRow(code);return b?{code,name:b.name,etf:DT_ETF_RE.test(b.name)}:{code,name:code,etf:false};
+}
+// ── 내 보유현황: 증권사 잔고 조회 (한국투자증권 inquire-balance, 키움 kt00018) ──
+const DT_ETF_RE=/^(KODEX|TIGER|RISE|KBSTAR|ACE|SOL|HANARO|KOSEF|ARIRANG|PLUS|KIWOOM|TIMEFOLIO|1Q|WON|BNK|FOCUS|TREX|UNICORN|VITA|ITF|KoAct|TRUSTON|DAISHIN343|마이티|파워|히어로즈|에셋플러스|마이다스)\b|ETN/i;
+function dtBalRow(code){const b=dtState().bal;return b&&Array.isArray(b.rows)?b.rows.find(r=>r.code===code):null;}
+function dtBalRows(broker,j){
+  const n=numK;
+  if(broker==='kis')return (j.rows||j.output1||[]).map(x=>({broker,code:String(x.pdno||'').trim(),name:String(x.prdt_name||x.pdno||'').trim(),
+      qty:n(x.hldg_qty),sellable:n(x.ord_psbl_qty),avg:n(x.pchs_avg_pric),cur:n(x.prpr)})).filter(r=>r.code&&r.qty>0);
+  // 키움 숫자는 0으로 채운 문자열, 가격 앞 +/−는 전일 대비 부호라 절댓값을 쓴다
+  return (j.acnt_evlt_remn_indv_tot||[]).map(x=>({broker,code:String(x.stk_cd||'').trim().replace(/^A/,''),name:String(x.stk_nm||'').trim(),
+      qty:n(x.rmnd_qty),sellable:n(x.trde_able_qty),avg:Math.abs(n(x.pur_pric)),cur:Math.abs(n(x.cur_prc))})).filter(r=>r.code&&r.qty>0);
+}
+async function dtLoadBalance(){
+  const jobs=[];
+  if(kisHasKeys())jobs.push(['kis',()=>kisBalance(Store.get('kis_demo')==='1')]);
+  if(kiwoomHasKeys())jobs.push(['kiwoom',()=>kiwoomBalance(Store.get('kiwoom_mock')==='1')]);
+  if(!jobs.length){alert('설정 탭에서 한국투자증권 또는 키움증권 API 키를 먼저 등록하세요.');return;}
+  if(dtCache.balBusy)return;
+  dtCache.balBusy=true;dtRender();
+  const res=await Promise.all(jobs.map(([b,f])=>f().then(j=>({b,rows:dtBalRows(b,j)}),e=>({b,err:e.message}))));
+  dtCache.balBusy=false;
+  const dt=dtState(),n=kstNow(),at=kstYmd(n)+' '+n.toISOString().slice(11,16);
+  const prev=dt.bal&&Array.isArray(dt.bal.rows)?dt.bal:{rows:[],at:{}},ok=res.filter(r=>!r.err);
+  if(ok.length){
+    // 성공한 증권사만 교체, 실패한 쪽은 직전 조회분 유지
+    dt.bal={rows:prev.rows.filter(r=>!ok.some(o=>o.b===r.broker)).concat(...ok.map(o=>o.rows)),at:Object.assign({},prev.at)};
+    ok.forEach(o=>{dt.bal.at[o.b]=at;});
+    save();
+  }
+  dtCache.balErr=res.filter(r=>r.err).map(r=>(r.b==='kis'?'한국투자증권':'키움증권')+': '+r.err).join(' / ')||null;
+  dtRender();
+  if(ok.length)dtRefresh(true);   // 보유 종목 현재가 갱신
+}
+function dtHoldView(dt){
+  const b=dt.bal||{},rows=Array.isArray(b.rows)?b.rows:[],hasKeys=kisHasKeys()||kiwoomHasKeys();
+  const at=Object.entries(b.at||{}).map(([k,v])=>(k==='kis'?'한투':'키움')+' '+String(v).slice(5)).join(' · ');
+  let tEv=0,tCost=0;
+  const cards=rows.map(r=>{
+    const lv=dtCache.rt[r.code],cur=lv&&lv.cur>0?lv.cur:r.cur,ev=r.qty*cur,cost=r.qty*r.avg,pnl=ev-cost;
+    tEv+=ev;tCost+=cost;
+    return card(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">
+        <div style="min-width:0"><div style="font-size:15px;font-weight:700;color:${T.text}">${esc(r.name)}</div>
+          <div class="mono" style="font-size:11px;color:${T.text3}">${esc(r.code)} · ${r.broker==='kis'?'한국투자':'키움'}${r.sellable<r.qty?` · 매도가능 ${fmtQty(r.sellable,'주')}`:''}</div></div>
+        ${pnlBox(pnl,cost>0?pnl/cost*100:null)}</div>
+      ${holdGrid([['보유수량',fmtQty(r.qty,'주')],['평균단가',won(Math.round(r.avg))],['현재가',cur?won(cur):'—'],['평가금액',won(Math.round(ev))]])}
+      <button onclick="dtOrder('${esc(r.code)}','sell')" class="tap" style="width:100%;padding:9px;margin-top:8px;background:${T.amber}1A;color:${T.amber};border:1px solid ${T.amber}44;border-radius:10px;font-size:12px;font-weight:700">⚡ 매매</button>`);
+  });
+  const tPnl=tEv-tCost;
+  return `<div style="display:flex;justify-content:space-between;align-items:center">${secL('내 보유현황 (증권사 잔고)')}
+      <button onclick="dtLoadBalance()" class="tap" style="padding:6px 12px;background:${T.bg3};color:${T.teal};border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap">${dtCache.balBusy?'<span class="spin">↻</span> 조회 중':'↻ 보유 불러오기'}</button></div>
+    ${dtCache.balErr?`<div style="font-size:12px;color:${T.red};margin-bottom:8px">⚠ ${esc(dtCache.balErr)}</div>`:''}
+    ${rows.length?card(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><div style="font-size:11px;color:${T.text3}">합계 평가금액 · ${rows.length}종목</div><div class="mono" style="font-size:16px;font-weight:700;color:${T.text}">${won(Math.round(tEv))}</div></div>${pnlBox(tPnl,tCost>0?tPnl/tCost*100:null)}</div>
+        <div style="font-size:10px;color:${T.text3};margin-top:6px">조회 ${esc(at)} · 현재가는 실시간 시세로 갱신, 손익은 수수료·세금 제외</div>`)+cards.join('')
+      :card(`<div style="font-size:13px;color:${T.text2};line-height:1.6">${!hasKeys?'설정 탭에서 한국투자증권 또는 키움증권 API 키를 등록하면 보유 종목을 불러올 수 있습니다.':at?'보유 종목이 없습니다 (조회 '+esc(at)+').':'↻ 보유 불러오기를 누르면 증권사 계좌의 보유 수량·평균단가를 가져옵니다.'}</div>`)}`;
+}
 
 // 한국 거래일 T의 신호 = (T 이전에 끝난 마지막 미국 종가) / (직전 한국 거래일 P 이전에 끝난 마지막 미국 종가) − 1.
 // 미국 날짜 u의 정규장은 한국 u+1일 새벽에 끝나므로 P ≤ u < T인 세션이 'P 장 마감 뒤 새로 나온 정보'다. 없으면(미국 휴장) 신호 없음.
@@ -2086,6 +2170,7 @@ async function dtRefresh(silent){
   if(!silent&&tab==='daytrade')dtRender();
   try{
     const today=kstYmd(),codes=dtAllCodes(dt).map(m=>m.code);
+    const rtCodes=[...new Set(codes.concat(((dt.bal&&dt.bal.rows)||[]).map(r=>r.code)))];   // 보유 종목 현재가도 같이
     const from=dtAddDays(dt.start<today?dt.start:today,-20);   // 직전 거래일·미국 기준 종가용 여유
     if(dtCache.day!==today||dtCache.from!==from){dtCache.kr={};dtCache.fetchHm={};dtCache.us={};dtCache.usAt=0;dtCache.day=today;dtCache.from=from;}
     const need=codes.filter(c=>!dtCache.kr[c]);
@@ -2094,7 +2179,7 @@ async function dtRefresh(silent){
     const [kr,us,rt]=await Promise.all([
       Promise.all(need.map(c=>dtFetchCandles(c,from).catch(()=>null))),
       Promise.all(usNeed.map(t=>dtFetchUs(t,from).catch(()=>null))),
-      codes.length?dtFetchRealtime(codes).catch(()=>({})):Promise.resolve({})]);
+      rtCodes.length?dtFetchRealtime(rtCodes).catch(()=>({})):Promise.resolve({})]);
     const hm=kstHm();
     need.forEach((c,i)=>{if(kr[i]){dtCache.kr[c]=kr[i];dtCache.fetchHm[c]=hm;}});
     usNeed.forEach((t,i)=>{if(us[i])dtCache.us[t]=us[i];});
@@ -2171,11 +2256,11 @@ function dtPairCard(p,dt){
   rows=p.codes.map(m=>{
     const r=dtCache.rt[m.code],cs=dtCache.series[m.code]||[],last=cs[cs.length-1];
     const cur=r&&r.cur>0?r.cur:last?last.c:0,openPx=last&&last.d===today?last.o:null;
-    const can=v&&v.hit&&v.when!=='next';
+    const can=v&&v.hit&&v.when!=='next',held=dtBalRow(m.code);
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid ${T.border}">
       <div><div style="font-size:13px;color:${T.text}">${esc(m.name)} <span class="mono" style="font-size:10px;color:${T.text3}">${m.code}</span>${m.etf?` <span style="font-size:10px;color:${T.teal}">ETF</span>`:` <span style="font-size:10px;color:${T.text3}">거래세 ${DT_TAX}%</span>`}</div>
-        <div class="mono" style="font-size:11px;color:${T.text2}">${openPx?`시가 ${won(openPx)} · `:''}현재 ${cur?won(cur):'—'}</div></div>
-      ${can?`<button onclick="dtOrder('${m.code}','buy')" class="tap" style="padding:8px 14px;background:${T.green};color:#000;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap">⚡ 매수</button>`:''}
+        <div class="mono" style="font-size:11px;color:${T.text2}">${openPx?`시가 ${won(openPx)} · `:''}현재 ${cur?won(cur):'—'}${held?` · <span style="color:${T.amber}">보유 ${fmtQty(held.qty,'주')}</span>`:''}</div></div>
+      <button onclick="dtOrder('${m.code}','${can||!held?'buy':'sell'}')" class="tap" style="padding:8px 14px;background:${can?T.green:T.bg3};color:${can?'#000':T.amber};border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap">⚡ 매매</button>
     </div>`;}).join('');
   return card(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
       <div><span style="font-size:15px;font-weight:700;color:${T.text}">${esc(p.label||p.us)}</span> <span class="mono" style="font-size:11px;color:${T.text3}">${esc(p.us)} ${dtRuleText(p)}</span></div>${badge}</div>
@@ -2192,11 +2277,12 @@ function dtSignalView(dt){
       <div style="font-size:12px;color:${T.text2};margin-top:6px;line-height:1.6">${esc(x.us)} ${pct(x.chg*100)} 신호 · 모의 진입(시가) ${won(x.ent)}${cur?` · 현재 ${won(cur)} <span style="color:${pctC(cur-x.ent)}">(${pct((cur/x.ent-1)*100)})</span>`:''}<br>${when}</div>
       ${btn('매도 주문',`dtOrder('${x.code}','sell')`,T.red,'margin-top:10px;padding:10px')}`);
   };
-  return `${secL('미국 밤사이 → 매수 대상')}
+  return `${dtHoldView(dt)}
+    ${secL('미국 밤사이 → 매수 대상')}
     ${dt.pairs.length?dt.pairs.map(p=>dtPairCard(p,dt)).join(''):card(`<div style="font-size:13px;color:${T.text2}">설정에서 종목쌍을 추가하세요.</div>`)}
     ${exits.length?secL('매도 대상 (모의매매 보유 기준)')+exits.map(exitCard).join(''):''}
     ${recent.length?secL('최근 주문 (3일)')+card(recent.map(o=>`<div style="display:flex;justify-content:space-between;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px solid ${T.border}"><span style="color:${o.side==='buy'?T.green:T.red};font-weight:700">${o.side==='buy'?'매수':'매도'}</span><span style="color:${T.text};flex:1">${esc(o.name)}</span><span class="mono" style="color:${T.text2}">${o.qty}주 · ${o.price?won(o.price):'시장가'}</span><span class="mono" style="color:${T.text3}">${o.d.slice(5)} ${o.hm}</span></div>`).join('')+`<div style="font-size:10px;color:${T.text3};margin-top:6px">체결 여부는 증권사 앱에서 확인하세요.</div>`):''}
-    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:12px">· 미국 등락은 국내 시가에 대부분 반영되고 장중엔 반대로 움직이는 경향이 있어, 미국 급락 다음날 시가에 사서 그다음 거래일 시가에 파는 방식입니다.<br>· 앱은 자동으로 주문하지 않습니다. ⚡ 버튼에서 수량·가격을 확인하고 직접 전송하세요. 08:30 이전 주문은 증권사에서 거부될 수 있습니다.<br>· 단타 주문·체결은 포트폴리오 보유 종목에 반영되지 않습니다.<br>· 근거: analysis/daytrade/us_signal.py (2014-07~2026-10)</div>`;
+    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:12px">· 미국 등락은 국내 시가에 대부분 반영되고 장중엔 반대로 움직이는 경향이 있어, 미국 급락 다음날 시가에 사서 그다음 거래일 시가에 파는 방식입니다.<br>· 앱은 자동으로 주문하지 않습니다. ⚡ 매매 버튼에서 매수/매도·수량·가격을 확인하고 직접 전송하세요. 08:30 이전 주문은 증권사에서 거부될 수 있습니다.<br>· 단타 주문·체결은 포트폴리오 보유 종목에 반영되지 않습니다.<br>· 근거: analysis/daytrade/us_signal.py (2014-07~2026-10)</div>`;
 }
 function dtPaperView(dt){
   const list=dt.paper.slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:a.key<b.key?1:-1),s=dtStats(list);
@@ -2322,24 +2408,29 @@ function dtOrder(code,side){
   const dt=dtState(),m=dtFindCode(code);
   const hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
   if(!hasKis&&!hasKiwoom){alert('설정 탭에서 한국투자증권 또는 키움증권 API 키를 먼저 등록하세요.');return;}
-  const r=dtCache.rt[code]||{},cur=r.cur||0,pre=kstHm()<900;
-  let qty=0,type='market';
-  if(side==='buy'){qty=cur>0?Math.floor(dt.amt/cur):0;type=pre?'market':'limit';}
-  else{const last=dt.orders.slice().reverse().find(o=>o.code===code&&o.side==='buy');qty=last?last.qty:0;}
-  window._dtOrder={code,side,broker:hasKis?'kis':'kiwoom',type,qty,price:cur};
+  const r=dtCache.rt[code]||{},bal=dtBalRow(code),cur=r.cur||(bal&&bal.cur)||0,pre=kstHm()<900;
+  const broker=bal&&(bal.broker==='kis'?hasKis:hasKiwoom)?bal.broker:hasKis?'kis':'kiwoom';
+  window._dtOrder={code,side,broker,type:'market',qty:0,price:cur};
+  dtOrdDefaults(window._dtOrder,pre);
   showModal(dtOrderHtml());
+}
+// 매수: 1회 금액 ÷ 현재가, 장 전 시장가 / 장중 지정가. 매도: 잔고 매도가능 수량(없으면 직전 단타 매수 수량), 시장가
+function dtOrdDefaults(st,pre){
+  const dt=dtState(),bal=dtBalRow(st.code);
+  if(st.side==='buy'){st.qty=st.price>0?Math.floor(dt.amt/st.price):0;st.type=pre?'market':'limit';}
+  else{const last=dt.orders.slice().reverse().find(o=>o.code===st.code&&o.side==='buy');st.qty=bal?(bal.sellable||bal.qty):last?last.qty:0;st.type='market';}
 }
 function dtOrderHtml(){
   const st=window._dtOrder,dt=dtState(),m=dtFindCode(st.code);
   const isSell=st.side==='sell',isMkt=st.type==='market',hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
-  const r=dtCache.rt[st.code]||{},pre=kstHm()<900;
+  const r=dtCache.rt[st.code]||{},bal=dtBalRow(st.code),curP=r.cur||(bal&&bal.cur)||0,pre=kstHm()<900;
   const tg=(on,l,fn,c)=>`<button onclick="${fn}" class="tap" style="flex:1;padding:9px;border-radius:10px;font-size:12px;font-weight:700;background:${on?c:T.bg3};color:${on?(c===T.teal?'#000':'#fff'):T.text2}">${l}</button>`;
   const field=(l,id,v)=>`<div><div style="font-size:12px;color:${T.text3};margin-bottom:5px">${l}</div><input type="number" id="${id}" step="1" placeholder="0" value="${v||''}"></div>`;
   const note=isSell?(dt.exit==='close'?'당일 종가 청산: 15:20 전에 매도하세요.':'다음 거래일 시가 청산: 08:30~09:00에 넣은 시장가 매도는 09:00 시가에 체결됩니다.')
     :pre?'08:30~09:00에 넣은 시장가 매수는 09:00 시가에 체결됩니다(백테스트와 같은 조건).':'시가 이후 매수는 백테스트 조건(시가 체결)과 다릅니다. 지정가를 권장합니다.';
   return `<div class="sheet-handle"></div>
     <div style="font-size:16px;font-weight:700;color:${T.amber};margin-bottom:4px">⚡ 단타 주문 — ${esc(m.name)} (${m.code})</div>
-    <div style="font-size:12px;color:${T.text3};margin-bottom:12px;line-height:1.6">현재가 ${r.cur?won(r.cur):'—'}${r.o>0?` · 시가 ${won(r.o)}`:''}<br><b style="color:${T.red}">${st.broker==='kis'?'한국투자증권':'키움증권'} ${brokerEnvLabel(st.broker)} 계좌로 전송됩니다</b></div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:12px;line-height:1.6">현재가 ${curP?won(curP):'—'}${r.o>0?` · 시가 ${won(r.o)}`:''}${bal?` · 보유 ${fmtQty(bal.qty,'주')}${bal.sellable<bal.qty?` (매도가능 ${fmtQty(bal.sellable,'주')})`:''}`:''}<br><b style="color:${T.red}">${st.broker==='kis'?'한국투자증권':'키움증권'} ${brokerEnvLabel(st.broker)} 계좌로 전송됩니다</b></div>
     ${hasKis&&hasKiwoom?`<div style="display:flex;gap:8px;margin-bottom:8px">${tg(st.broker==='kis','한국투자증권',"dtOrdSet('broker','kis')",T.teal)}${tg(st.broker==='kiwoom','키움증권',"dtOrdSet('broker','kiwoom')",T.teal)}</div>`:''}
     <div style="display:flex;gap:8px;margin-bottom:8px">${tg(!isSell,'매수',"dtOrdSet('side','buy')",T.green)}${tg(isSell,'매도',"dtOrdSet('side','sell')",T.red)}</div>
     <div style="display:flex;gap:8px;margin-bottom:14px">${tg(!isMkt,'지정가',"dtOrdSet('type','limit')",T.blue)}${tg(isMkt,'시장가',"dtOrdSet('type','market')",T.blue)}</div>
@@ -2354,7 +2445,9 @@ function dtOrdSet(k,v){
   const st=window._dtOrder,q=document.getElementById('dtQty'),p=document.getElementById('dtPrice');
   if(q&&q.value!=='')st.qty=parseInt(q.value,10)||0;
   if(p&&p.value!=='')st.price=parseInt(p.value,10)||0;   // 토글해도 입력값 유지
-  st[k]=v;showModal(dtOrderHtml());
+  if(k==='side'&&v!==st.side){st.side=v;dtOrdDefaults(st,kstHm()<900);}   // 매수↔매도 전환 시 수량·주문유형 기본값 다시
+  else st[k]=v;
+  showModal(dtOrderHtml());
 }
 async function confirmDtOrder(){
   const st=window._dtOrder,dt=dtState(),m=dtFindCode(st.code);
@@ -2381,7 +2474,10 @@ async function confirmDtOrder(){
 
 // ── 화면: 설정 ──
 function settingsScreen(){
+  const thBtn=(v,l)=>{const on=uiTheme===v;return `<button onclick="setTheme('${v}')" class="tap" style="flex:1;padding:12px;border-radius:12px;font-size:14px;font-weight:700;background:${on?T.teal:T.bg3};color:${on?'#000':T.text2}">${l}</button>`;};
   return `<div class="scr fade" style="padding:0 16px 40px;height:100%">
+    ${secL('화면 테마')}
+    ${card(`<div style="display:flex;gap:8px">${thBtn('dark','🌙 다크 모드')}${thBtn('light','☀️ 라이트 모드')}</div><div style="font-size:11px;color:${T.text3};margin-top:8px">이 기기에 저장되며 백업·초기화와 무관합니다.</div>`)}
     ${secL('환율 설정')}
     ${card(`<div style="display:flex;gap:10px"><input id="exIn" type="number" value="${portfolio.exRate}" style="flex:1"><button onclick="saveEx()" class="tap" style="padding:10px 18px;background:${T.teal};color:#000;border-radius:10px;font-weight:700">저장</button></div><div style="margin-top:8px">${btn('↻  실시간 환율 조회','fetchExRateManual()',T.blue)}</div><div style="font-size:11px;color:${T.text3};margin-top:6px">현재: 1 USD = ${portfolio.exRate.toLocaleString()} KRW</div>`)}
     ${secL('코인 가격 연동')}
@@ -2467,7 +2563,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.1.2</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.2</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 

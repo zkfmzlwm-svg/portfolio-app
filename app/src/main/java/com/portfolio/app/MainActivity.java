@@ -3,9 +3,13 @@ package com.portfolio.app;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
+import android.view.View;
+import android.view.Window;
 import android.webkit.*;
 import android.widget.FrameLayout;
 import java.io.*;
@@ -17,6 +21,7 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
@@ -53,6 +58,20 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
         SharedPreferences prefs = getSharedPreferences("porto", MODE_PRIVATE);
+        // 시작 시 저장된 테마로 상태바·배경을 맞춰 페이지 로드 전 깜빡임을 줄인다
+        if ("light".equals(prefs.getString("ui_theme", ""))) {
+            applyBars("#EEF1F6", "#F4F6FA", true);
+        } else {
+            webView.setBackgroundColor(Color.parseColor("#04080F"));
+        }
+
+        // 화면 테마(다크/라이트) → 상태바·내비게이션바 색
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void setBars(String status, String nav, boolean light) {
+                applyBars(status, nav, light);
+            }
+        }, "UiBridge");
 
         // 스토리지 브릿지
         webView.addJavascriptInterface(new Object() {
@@ -194,6 +213,11 @@ public class MainActivity extends Activity {
             }
 
             @JavascriptInterface
+            public void balance(boolean demo, String callbackId) {
+                kisBalance(demo, callbackId);
+            }
+
+            @JavascriptInterface
             public String fetch(String callbackId) {
                 return kisResults.remove(callbackId);
             }
@@ -227,6 +251,11 @@ public class MainActivity extends Activity {
             public void placeOrder(boolean mock, String side, String stkCd, String trdeTp,
                                     String qty, String price, String callbackId) {
                 kiwoomPlaceOrder(mock, side, stkCd, trdeTp, qty, price, callbackId);
+            }
+
+            @JavascriptInterface
+            public void balance(boolean mock, String callbackId) {
+                kiwoomBalance(mock, callbackId);
             }
 
             @JavascriptInterface
@@ -480,6 +509,93 @@ public class MainActivity extends Activity {
         });
     }
 
+    // 주식잔고조회(inquire-balance). 연속조회(tr_cont M/F)는 최대 5페이지까지 이어 붙여 {rt_cd, rows, summary}로 돌려준다
+    private String[] kisBalanceRequest(boolean demo, String token, String appKey, String appSecret,
+                                       String cano, String prdtCd, String fk, String nk, boolean cont) throws Exception {
+        String q = "CANO=" + URLEncoder.encode(cano, "UTF-8")
+            + "&ACNT_PRDT_CD=" + URLEncoder.encode(prdtCd, "UTF-8")
+            + "&AFHR_FLPR_YN=N&OFL_YN=&INQR_DVSN=02&UNPR_DVSN=01&FUND_STTL_ICLD_YN=N"
+            + "&FNCG_AMT_AUTO_RDPT_YN=N&PRCS_DVSN=00"
+            + "&CTX_AREA_FK100=" + URLEncoder.encode(fk, "UTF-8")
+            + "&CTX_AREA_NK100=" + URLEncoder.encode(nk, "UTF-8");
+        URL u = new URL((demo ? KIS_DEMO_URL : KIS_REAL_URL) + "/uapi/domestic-stock/v1/trading/inquire-balance?" + q);
+        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+        try {
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setRequestProperty("authorization", "Bearer " + token);
+            conn.setRequestProperty("appkey", appKey);
+            conn.setRequestProperty("appsecret", appSecret);
+            conn.setRequestProperty("tr_id", demo ? "VTTC8434R" : "TTTC8434R");
+            if (cont) conn.setRequestProperty("tr_cont", "N");
+            conn.setRequestProperty("custtype", "P");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            int code = conn.getResponseCode();
+            String resp = readStream(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+            return new String[]{resp, conn.getHeaderField("tr_cont")};
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    private void kisBalance(boolean demo, String callbackId) {
+        executor.execute(() -> {
+            try {
+                SharedPreferences prefs = getSharedPreferences("porto", MODE_PRIVATE);
+                String cano = prefs.getString("kis_cano", "");
+                String prdtCd = prefs.getString("kis_prdt_cd", "");
+                if (cano.isEmpty() || prdtCd.isEmpty()) {
+                    throw new IllegalStateException("계좌번호(앞 8자리/상품코드)를 설정하세요.");
+                }
+                String appKey = prefs.getString("kis_app_key", "");
+                String appSecret = prefs.getString("kis_app_secret", "");
+                String token = kisGetToken(prefs, demo, false);
+
+                JSONArray rows = new JSONArray();
+                Object summary = null;
+                String fk = "", nk = "";
+                boolean cont = false;
+                String error = null;
+                for (int page = 0; page < 5; page++) {
+                    String[] r = kisBalanceRequest(demo, token, appKey, appSecret, cano, prdtCd, fk, nk, cont);
+                    JSONObject j = new JSONObject(r[0]);
+                    String msgCd = j.optString("msg_cd", "");
+                    if (page == 0 && ("EGW00123".equals(msgCd) || "EGW00121".equals(msgCd))) {
+                        // 토큰 만료/무효 → 강제 재발급 후 1회 재시도
+                        token = kisGetToken(prefs, demo, true);
+                        r = kisBalanceRequest(demo, token, appKey, appSecret, cano, prdtCd, fk, nk, cont);
+                        j = new JSONObject(r[0]);
+                    }
+                    if (!"0".equals(j.optString("rt_cd", "0"))) { error = r[0]; break; }
+                    JSONArray o1 = j.optJSONArray("output1");
+                    if (o1 != null) for (int i = 0; i < o1.length(); i++) rows.put(o1.get(i));
+                    if (j.has("output2")) summary = j.get("output2");
+                    String tc = r[1];
+                    if (tc == null || !("M".equals(tc) || "F".equals(tc))) break;
+                    fk = j.optString("ctx_area_fk100", "").trim();
+                    nk = j.optString("ctx_area_nk100", "").trim();
+                    cont = true;
+                    Thread.sleep(600); // 초당 호출 제한(모의 2건/초)
+                }
+                if (error != null) {
+                    kisResults.put(callbackId, error);
+                } else {
+                    JSONObject out = new JSONObject();
+                    out.put("rt_cd", "0");
+                    out.put("rows", rows);
+                    if (summary != null) out.put("summary", summary);
+                    kisResults.put(callbackId, out.toString());
+                }
+            } catch (Exception e) {
+                kisResults.put(callbackId, errJson(e));
+            } finally {
+                webView.post(() -> webView.evaluateJavascript(
+                    "window.KisBridge&&window.KisBridge._deliver('" + callbackId + "')", null));
+            }
+        });
+    }
+
     // ── 키움증권 ──────────────────────────────────────────────────────
     private String kiwoomGetToken(SharedPreferences prefs, boolean mock, boolean forceRefresh) throws Exception {
         String tokenKey = mock ? "kiwoom_token_mock" : "kiwoom_token_real";
@@ -577,6 +693,95 @@ public class MainActivity extends Activity {
             } finally {
                 webView.post(() -> webView.evaluateJavascript(
                     "window.KiwoomBridge&&window.KiwoomBridge._deliver('" + callbackId + "')", null));
+            }
+        });
+    }
+
+    // 계좌평가잔고내역(kt00018). 연속조회(cont-yn/next-key)는 최대 5페이지까지 이어 붙인다
+    private String[] kiwoomAcntRequest(boolean mock, String token, String apiId, JSONObject body,
+                                       String contYn, String nextKey) throws Exception {
+        URL u = new URL((mock ? KIWOOM_MOCK_URL : KIWOOM_REAL_URL) + "/api/dostk/acnt");
+        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+        try {
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json;charset=UTF-8");
+            conn.setRequestProperty("api-id", apiId);
+            conn.setRequestProperty("authorization", "Bearer " + token);
+            conn.setRequestProperty("cont-yn", contYn);
+            conn.setRequestProperty("next-key", nextKey);
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            conn.getOutputStream().write(body.toString().getBytes("UTF-8"));
+            int code = conn.getResponseCode();
+            String resp = readStream(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+            return new String[]{resp, conn.getHeaderField("cont-yn"), conn.getHeaderField("next-key")};
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    private void kiwoomBalance(boolean mock, String callbackId) {
+        executor.execute(() -> {
+            try {
+                SharedPreferences prefs = getSharedPreferences("porto", MODE_PRIVATE);
+                String token = kiwoomGetToken(prefs, mock, false);
+                JSONObject body = new JSONObject();
+                body.put("qry_tp", "1");          // 1: 합산
+                body.put("dmst_stex_tp", "KRX");
+                JSONArray rows = new JSONArray();
+                JSONObject first = null;
+                String contYn = "N", nextKey = "", error = null;
+                for (int page = 0; page < 5; page++) {
+                    String[] r = kiwoomAcntRequest(mock, token, "kt00018", body, contYn, nextKey);
+                    JSONObject j = new JSONObject(r[0]);
+                    if (page == 0 && j.optInt("return_code", 0) == 3) {
+                        // return_code 3 = 토큰 만료/무효 → 강제 재발급 후 1회 재시도
+                        token = kiwoomGetToken(prefs, mock, true);
+                        r = kiwoomAcntRequest(mock, token, "kt00018", body, contYn, nextKey);
+                        j = new JSONObject(r[0]);
+                    }
+                    if (j.optInt("return_code", 0) != 0) { error = r[0]; break; }
+                    if (first == null) first = j;
+                    JSONArray a = j.optJSONArray("acnt_evlt_remn_indv_tot");
+                    if (a != null) for (int i = 0; i < a.length(); i++) rows.put(a.get(i));
+                    if (!"Y".equals(r[1]) || r[2] == null || r[2].isEmpty()) break;
+                    contYn = "Y";
+                    nextKey = r[2];
+                    Thread.sleep(300);
+                }
+                if (error != null) {
+                    kiwoomResults.put(callbackId, error);
+                } else {
+                    if (first == null) first = new JSONObject();
+                    first.put("return_code", 0);
+                    first.put("acnt_evlt_remn_indv_tot", rows);
+                    kiwoomResults.put(callbackId, first.toString());
+                }
+            } catch (Exception e) {
+                kiwoomResults.put(callbackId, errJson(e));
+            } finally {
+                webView.post(() -> webView.evaluateJavascript(
+                    "window.KiwoomBridge&&window.KiwoomBridge._deliver('" + callbackId + "')", null));
+            }
+        });
+    }
+
+    // 상태바·내비게이션바 색과 아이콘 밝기 (라이트 테마는 어두운 아이콘)
+    private void applyBars(String status, String nav, boolean light) {
+        runOnUiThread(() -> {
+            try {
+                Window w = getWindow();
+                w.setStatusBarColor(Color.parseColor(status));
+                w.setNavigationBarColor(Color.parseColor(nav));
+                w.getDecorView().setBackgroundColor(Color.parseColor(status));
+                if (webView != null) webView.setBackgroundColor(Color.parseColor(status));
+                View d = w.getDecorView();
+                int f = d.getSystemUiVisibility();
+                int lightFlags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                if (Build.VERSION.SDK_INT >= 26) lightFlags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                d.setSystemUiVisibility(light ? (f | lightFlags) : (f & ~lightFlags));
+            } catch (Exception ignored) {
             }
         });
     }
