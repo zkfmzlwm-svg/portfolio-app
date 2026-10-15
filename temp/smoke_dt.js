@@ -82,6 +82,17 @@ ok(u.ok&&u.bars.length===2&&u.live&&u.live.c===94&&near(u.live.chg,94/98-1),'장
 sandbox.__resp=mkResp(false);
 u=await run("dtFetchUs('SOXX','2026-10-01')");
 ok(u.bars.length===2&&u.live===null,'장 마감 후: live 없음');
+// 야후 일봉 목록이 막 끝난 세션을 아직 싣지 않은 경우 → meta 정규장 종가로 보충 (2026-10-15 아침 실제 사례: SOXX 10-14 −4.50%)
+const nextSt=now+36000;
+sandbox.__resp={chart:{result:[{meta:{regularMarketPrice:519.42,regularMarketTime:Date.UTC(2026,9,14,20,0)/1000,currentTradingPeriod:{regular:{start:nextSt,end:nextSt+23400}}},
+  timestamp:[Date.UTC(2026,9,12,13,30)/1000,Date.UTC(2026,9,13,13,30)/1000],indicators:{quote:[{close:[544.85,543.9]}]}}]}};
+u=await run("dtFetchUs('SOXX','2026-10-01')");
+ok(u.bars.length===3&&u.bars[2].d==='2026-10-14'&&u.bars[2].c===519.42&&u.live===null,'일봉에 없는 직전 세션(10-14)을 정규장 종가로 보충');
+sandbox.__ub=u.bars;
+ok(near(run("dtUsChange(__ub,'2026-10-14','2026-10-15')").chg,519.42/543.9-1),'보충 후 10-15 신호 = SOXX −4.50%');
+sandbox.__resp.chart.result[0].timestamp.push(Date.UTC(2026,9,14,13,30)/1000);sandbox.__resp.chart.result[0].indicators.quote[0].close.push(519.5);
+u=await run("dtFetchUs('SOXX','2026-10-01')");
+ok(u.bars.length===3&&u.bars[2].c===519.5,'일봉에 이미 있으면 그대로 사용');
 
 // 5. 화면 신호: 시각 고정(2026-10-13 화 08:40, 장 전) — 미국 월요일 −4% → 오늘 시가 매수
 run("kstNow=()=>new Date(Date.UTC(2026,9,13,8,40))");
