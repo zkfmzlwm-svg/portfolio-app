@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.1.1</title>
+<title>포트폴리오 v6.1.2</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:#04080F;overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -692,7 +692,10 @@ if(!portfolio.targets)portfolio.targets=Object.assign({},FIXED_TARGETS);
 // 고정 비중 운영 전환(1회): 기존 저장 목표비중을 백테스트 기반 고정 비중으로 교체
 if(!portfolio.fixedTargetsV1){portfolio.targets=Object.assign({},FIXED_TARGETS);portfolio.fixedTargetsV1=true;Store.set('porto',JSON.stringify(portfolio));}
 ['kr','us','bonds','gold','crypto'].forEach(k=>{if(portfolio.targets[k]==null)portfolio.targets[k]=0;});
-let tab='home',catH='kr',filterP='all',monthly=250,loadingPrice=false,logs=[];
+// 월 적립금(만원): 사용자가 슬라이더로 바꾼 값은 portfolio.monthly에 저장돼 재실행 후에도 유지
+const MONTHLY_DEFAULT=250;
+function savedMonthly(){const v=+portfolio.monthly;return v>=50&&v<=500?v:MONTHLY_DEFAULT;}
+let tab='home',catH='kr',filterP='all',monthly=savedMonthly(),loadingPrice=false,logs=[];
 let touchStartX=0,touchStartY=0;
 
 // ── 헬퍼 ──
@@ -719,6 +722,7 @@ function renderTags(tags){
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 const today=()=>new Date().toISOString().slice(0,10);
 function save(){Store.set('porto',JSON.stringify(portfolio));}
+function setMonthly(v){v=+v;if(!(v>=50&&v<=500))return;monthly=v;portfolio.monthly=v;save();}
 // 보유종목 전체를 평탄화 (cat: kr/us/bonds/gold/crypto/watch)
 function flatHoldings(includeWatch){
   const out=[];
@@ -1768,7 +1772,7 @@ function rebalScreen(){
       <span id="mLabel" class="mono" style="font-size:24px;font-weight:700;color:${T.teal}">${monthly}만원</span>
     </div>
     <input type="range" id="mSlider" min="50" max="500" step="10" value="${monthly}"
-      oninput="monthly=+this.value;renderAllocCards()"
+      oninput="monthly=+this.value;renderAllocCards()" onchange="setMonthly(this.value)"
       style="background:linear-gradient(to right,${T.teal} ${slPct}%,#1A2845 ${slPct}%)">
     <div style="display:flex;justify-content:space-between;font-size:11px;color:${T.text3};margin-top:8px">
       <span>50만</span><span>200만</span><span>350만</span><span>500만</span>
@@ -2463,7 +2467,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.1.1</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.1.2</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -2748,7 +2752,7 @@ function _doRestoreConfirm(){
   d.holdings=d.holdings||{};
   ['kr_stocks','kr_etfs','us','bonds','gold','crypto','watchlist'].forEach(k=>{if(!Array.isArray(d.holdings[k]))d.holdings[k]=[];});
   if(!d.switching)d.switching=JSON.parse(JSON.stringify(INIT.switching));
-  portfolio=migratePortfolio(d);
+  portfolio=migratePortfolio(d);monthly=savedMonthly();
   save();closeModal();render();
   alert('✅ 복원되었습니다.');
 }
@@ -3385,7 +3389,7 @@ function resetPortfolio(){
     </div>`);
 }
 function _doReset(){
-  portfolio=JSON.parse(JSON.stringify(INIT));
+  portfolio=JSON.parse(JSON.stringify(INIT));monthly=savedMonthly();
   Store.set('porto',JSON.stringify(portfolio));
   closeModal();render();
 }

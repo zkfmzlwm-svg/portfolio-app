@@ -43,6 +43,16 @@ ok(plan.Xstar>=c.total,'Xstar>=현재총액');
 {const ft=run('FIXED_TARGETS');ok(ft.kr===20&&ft.us===30&&ft.bonds===10&&ft.gold===25&&ft.crypto===15,'고정비중 20/30/10/25/15');
  ok(JSON.stringify(run('INIT.targets'))===JSON.stringify(ft),'신규 설치 목표비중 = 고정비중');
  ok(run('monthly')===250,'월 투자금 기본 250만원, got '+run('monthly'));
+ // v6.1.2: 슬라이더로 바꾼 월 투자금은 저장되어 재실행 후에도 유지
+ run('setMonthly("370")');
+ ok(run('monthly')===370&&run('portfolio.monthly')===370,'setMonthly 반영');
+ ok(JSON.parse(sandbox.localStorage._d.porto).monthly===370,'월 투자금 localStorage 저장');
+ {const sb2=Object.assign({},sandbox,{localStorage:{_d:{porto:sandbox.localStorage._d.porto},getItem(k){return this._d[k]??null;},setItem(k,v){this._d[k]=v;}},window:{}});
+  vm.createContext(sb2);vm.runInContext(code,sb2);
+  ok(vm.runInContext('monthly',sb2)===370,'재실행 시 저장된 월 투자금 복원, got '+vm.runInContext('monthly',sb2));}
+ run('setMonthly(9999)');ok(run('monthly')===370,'범위 밖 값 무시');
+ run('portfolio.monthly=undefined');ok(run('savedMonthly()')===250,'저장값 없으면 250');
+ run('setMonthly(250)');
  const old=run(`migratePortfolio({ver:'5.4',targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
  ok(old.targets.gold===25&&old.targets.crypto===15&&old.ver==='6.1','v5.4 저장 목표비중 → 25/15로 1회 교체');
  const kept=run(`migratePortfolio({ver:'5.5',targets:{kr:20,us:30,bonds:10,gold:20,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
