@@ -199,22 +199,59 @@ run("closeModal()");
 // 8. 마이그레이션: v6.0(변동성 돌파 구조) → 새 기본 쌍, 주문 기록만 유지
 const mig=run(`migratePortfolio({ver:'6.0',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
   dt:{codes:[{code:'069500'}],k:0.7,filt:'none',exit:'nextopen',amt:1000000,fee:0.015,start:'2026-10-01',paper:[{key:'old'}],done:{'069500':'2026-10-10'},obs:{},orders:[{d:'2026-10-12',code:'069500'}]}})`);
-ok(mig.ver==='6.1'&&mig.dt.pairs.length===5&&mig.dt.pairs[0].us==='SOXX'&&mig.dt.pairs[0].th===3&&mig.dt.pairs[1].us==='SPY'&&mig.dt.pairs[1].th===1.5&&mig.dt.pairs.map(p=>p.us).slice(2).join()==='LLY,ALB,XOM','v6.0 → 기본 5쌍(SOXX −3%, SPY −1.5%, LLY·ALB·XOM −4%)');
+ok(mig.ver==='6.1'&&mig.dt.pairs.length===6&&mig.dt.pairs[0].us==='SOXX'&&mig.dt.pairs[0].th===3&&mig.dt.pairs[1].us==='SPY'&&mig.dt.pairs[1].th===1.5&&mig.dt.pairs.map(p=>p.us).slice(2).join()==='LLY,ALB,XOM,QQQ','v6.0 → 기본 6쌍(SOXX −3%, SPY −1.5%, LLY·ALB·XOM −4%, QQQ +2% 역추세)');
 ok(mig.dt.paper.length===0&&mig.dt.orders.length===1&&mig.dt.start===run('kstYmd()')&&!mig.dt.codes,'모의매매 새로 시작 · 주문 기록 유지');
 const kept=run(`migratePortfolio({ver:'6.1',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
   dt:{pairs:[{id:'x',us:'QQQ',dir:'down',th:2,codes:[]}],exit:'close',amt:500000,fee:0.01,start:'2026-09-01',paper:[{key:'a'}]}})`);
-ok(kept.dt.pairs.length===4&&kept.dt.pairs[0].us==='QQQ'&&kept.dt.pairs.slice(1).map(p=>p.id).join()==='bio,bat,eng'&&kept.dt.sectorsV1===true&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.done==='object','v6.1 설정·기록 유지 + 누락 필드 보완');
+ok(kept.dt.pairs.length===5&&kept.dt.pairs[0].us==='QQQ'&&kept.dt.pairs.slice(1).map(p=>p.id).join()==='bio,bat,eng,fade'&&kept.dt.sectorsV1===true&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.done==='object','v6.1 설정·기록 유지 + 누락 필드 보완');
 
 // v6.3: 바이오·2차전지·에너지 쌍 — 1회만 추가, 지운 쌍은 다시 안 넣음, 근거 약함 표시
 {const once=run(`migratePortfolio({ver:'6.1',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
    dt:{pairs:[{id:'p1',us:'SOXX',dir:'down',th:3,codes:[]},{id:'bio',us:'LLY',dir:'down',th:5,codes:[]}],start:'2026-09-01'}})`);
- ok(once.dt.pairs.length===4&&once.dt.pairs.find(p=>p.id==='bio').th===5,'같은 id 쌍(사용자 수정)은 덮어쓰지 않음');
+ ok(once.dt.pairs.length===5&&once.dt.pairs.find(p=>p.id==='bio').th===5,'같은 id 쌍(사용자 수정)은 덮어쓰지 않음');
  once.dt.pairs=once.dt.pairs.filter(p=>p.id!=='eng');sandbox.__once=once;
- const again=run('migratePortfolio(__once)');ok(again.dt.pairs.length===3&&!again.dt.pairs.some(p=>p.id==='eng'),'지운 쌍은 다시 추가 안 함');
+ const again=run('migratePortfolio(__once)');ok(again.dt.pairs.length===4&&!again.dt.pairs.some(p=>p.id==='eng'),'지운 쌍은 다시 추가 안 함');
  const d=run('DT_DEFAULT');ok(d.pairs.find(p=>p.id==='bat').codes.map(c=>c.code).join()==='305720,086520'&&d.pairs.find(p=>p.id==='bio').codes.every(c=>c.etf)&&d.pairs.find(p=>p.id==='eng').weak===true,'기본 쌍 구성');
  run("portfolio.dt=JSON.parse(JSON.stringify(DT_DEFAULT));portfolio.dt.start=kstYmd();dtCache.sig={eng:{s:{chg:-0.05,n:1,to:'2026-10-15'},hit:true,when:'preopen'}};dtCache.rt={};dtCache.series={}");
  const c=run("dtPairCard(dtPair('eng'),portfolio.dt)");
  ok(clean(c)&&c.includes('근거 약함')&&c.includes('(근거 약함)')&&c.includes('color:#FFB020'),'에너지 쌍 카드: 근거 약함 메모·주황 배지');}
+
+// v6.3: 급등 역추세 — 시가 매수 → 시가 +tp% 지정가 익절, 못 닿으면 당일 종가 / 인버스·레버리지 차익과세
+{ok(run('dtTpPrice(10000,0.5,true)')===10050&&run('dtTpPrice(1990,0.5,true)')===2000&&run('dtTpPrice(188500,0.5,false)')===189500,'익절 목표가 호가단위 올림');
+ ok(near(run('dtNetRet(10000,10050,true,0.015,true)'),(1+0.005*(1-0.154))*(1-0.00015)/1.00015-1)&&near(run('dtNetRet(10000,9900,true,0.015,true)'),(1-0.01)*(1-0.00015)/1.00015-1),'인버스 ETF: 이익에만 15.4% 과세');
+ const fp=run("JSON.parse(JSON.stringify(DT_DEFAULT.pairs.find(p=>p.id==='fade')))");
+ ok(fp.dir==='up'&&fp.th===2&&fp.exit==='tp'&&fp.tp===0.5&&fp.codes.every(c=>c.etf&&c.gtax)&&fp.codes.map(c=>c.code).join()==='114800,251340','기본 역추세 쌍 구성');
+ sandbox.__fp=fp;
+ sandbox.__ub=[{d:'2026-10-06',c:100},{d:'2026-10-07',c:103},{d:'2026-10-08',c:103.5},{d:'2026-10-09',c:106}];
+ sandbox.__ic=[{d:'2026-10-07',o:3000,h:3010,l:2980,c:3000},{d:'2026-10-08',o:2950,h:2970,l:2930,c:2940},{d:'2026-10-12',o:2900,h:2905,l:2880,c:2890},{d:'2026-10-13',o:2880,h:2890,l:2860,c:2870}];
+ run("__dt={start:'2026-10-01',exit:'nextopen',fee:0.015,amt:1000000,paper:[],done:{},orders:[]}");
+ const op=run("dtProcessPair(__dt,__fp,__fp.codes[0],__ic,__ub,'2026-10-13',false)");
+ const pp=run('__dt.paper');
+ // 10-08: QQQ +3%(10-07) → 시가 2950, 목표 2965(호가 5) ≤ 고가 2970 → 익절 / 10-12: +2.4%(10-09) → 목표 2915 > 고가 2905 → 종가 2890
+ ok(pp.length===2&&pp[0].d==='2026-10-08'&&pp[0].xp===2965&&pp[0].xd==='2026-10-08'&&pp[0].exit==='tp'&&pp[1].d==='2026-10-12'&&pp[1].xp===2890,'익절 체결 / 못 닿으면 당일 종가 '+JSON.stringify(pp.map(x=>[x.d,x.xp])));
+ ok(pp[0].ret>0&&pp[1].ret<0&&op.length===0,'수익·손실 기록, 미결 없음');
+ // 오늘 장중(목표 미도달) → 미결 + 목표가 / 장 마감 후 → 종가 확정
+ sandbox.__ic2=[{d:'2026-10-09',o:3000,h:3000,l:2990,c:3000},{d:'2026-10-12',o:2900,h:2905,l:2880,c:2895}];
+ run("__dt2={start:'2026-10-01',exit:'nextopen',fee:0.015,amt:1000000,paper:[],done:{},orders:[]}");
+ const op2=run("dtProcessPair(__dt2,__fp,__fp.codes[0],__ic2,__ub,'2026-10-12',false)");
+ ok(op2.length===1&&op2[0].tgt===2915&&run('__dt2.paper.length')===0,'장중 미도달 → 미결(목표가 2,915)');
+ run("dtProcessPair(__dt2,__fp,__fp.codes[0],__ic2,__ub,'2026-10-12',true)");
+ ok(run('__dt2.paper.length')===1&&run('__dt2.paper[0].xp')===2895,'장 마감 후 → 당일 종가 확정');
+ // 화면: 역추세 카드는 손실 경고 없음, 규칙에 익절 표시 / 매도 카드는 익절 지정가
+ run("portfolio.dt=JSON.parse(JSON.stringify(DT_DEFAULT));portfolio.dt.start=kstYmd();dtCache.sig={fade:{s:{chg:0.025,n:1,to:'2026-10-15'},hit:true,when:'preopen'}};dtCache.rt={};dtCache.series={}");
+ const fc=run("dtPairCard(dtPair('fade'),portfolio.dt)");
+ ok(clean(fc)&&fc.includes('+0.5% 익절')&&fc.includes('시가 +0.5% 지정가 익절, 못 닿으면 당일 종가 매도')&&!fc.includes('백테스트상 손실')&&fc.includes('차익과세 15.4%'),'역추세 카드: 익절 규칙·차익과세, 손실 경고 없음');
+ const sc=run("dtPairCard(dtPair('p1'),portfolio.dt)");ok(sc.includes('다음 거래일 시가 매도')||!sc.includes('익절'),'다른 쌍은 공통 매도 방식');
+ run("dtCache.open={'fade|114800':[{key:'k',d:kstYmd(),pair:'fade',us:'QQQ',chg:0.025,code:'114800',name:'KODEX 인버스',etf:true,ent:2900,tgt:2915}]};dtSub='signal';render()");
+ out=els.app._html;ok(out.includes('익절 지정가 매도 (2,915원)')&&out.includes("dtOrder('114800','sell',2915)"),'매도 대상: 익절 지정가 버튼');
+ sandbox.window.KisBridge.hasKeys=()=>true;run("dtOrder('114800','sell',2915)");
+ ok(run('window._dtOrder.type')==='limit'&&run('window._dtOrder.price')===2915,'익절 주문: 지정가 2,915원 미리 채움');run('closeModal()');
+ // 설정: 매도 방식 전환·익절 % 저장
+ run("dtPairExit('p1','tp')");ok(run("dtPair('p1').exit")==='tp'&&run("dtPair('p1').tp")===0.5,'쌍 매도 방식 → 당일 익절(기본 0.5%)');
+ run("dtSub='cfg';render()");ok(els.app._html.includes('id="dtPP_p1"'),'익절 % 입력칸');
+ vals.dtPL_p1='반도체';vals.dtPU_p1='SOXX';vals.dtPR_p1='SOXL';vals.dtPT_p1='3';vals.dtPP_p1='0.8';run("dtRefresh=async()=>{}");run("dtSavePair('p1')");
+ ok(run("dtPair('p1').tp")===0.8,'익절 % 저장');
+ run("dtPairExit('p1','')");ok(run("dtPair('p1').exit")===undefined,'공통 설정으로 복귀');}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

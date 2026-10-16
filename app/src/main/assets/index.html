@@ -241,6 +241,11 @@ const DT_SECTOR_PAIRS=[
   {id:'eng',label:'에너지',us:'XOM',ref:'XLE',dir:'down',th:4,weak:true,
    note:'근거 약함: 백테스트 거래당 +0.45%, Sharpe 0.26 (t 1.2). 정유주(SK이노베이션·S-Oil)는 손실이라 화학 ETF·롯데케미칼로 구성. 모의매매로 확인 후 매매 권장.',
    codes:[{code:'117460',name:'KODEX 에너지화학',etf:true},{code:'011170',name:'롯데케미칼',etf:false}]},
+  // 급등 역추세(analysis/daytrade/surge_tp.py): 미국 급등 다음날 국내는 시가 고점 → 장중 하락 경향.
+  // 종목을 사서 +0.5~1% 익절하는 원안은 전 섹터 손실(SOXX ≥ +2% → 반도체 2종목 거래당 −0.39%), 인버스 ETF로 뒤집으면 플러스:
+  // QQQ ≥ +2% → 인버스 2종 시가 매수 · +0.5% 지정가 익절 · 못 닿으면 종가 = 연 28건, 거래당 +0.14%(차익과세 15.4% 반영), 승률 77%, Sharpe 1.04
+  {id:'fade',label:'급등 역추세',us:'QQQ',ref:'SPY',dir:'up',th:2,exit:'tp',tp:0.5,
+   codes:[{code:'114800',name:'KODEX 인버스',etf:true,gtax:true},{code:'251340',name:'KODEX 코스닥150선물인버스',etf:true,gtax:true}]},
 ];
 const DT_DEFAULT={
   pairs:[
@@ -2081,7 +2086,15 @@ function dtUsChange(bars,P,T){
 }
 function dtHit(p,chg){return p.dir==='up'?chg>=p.th/100:chg<=-p.th/100;}
 // 순수익률: 매수·매도 수수료 + (개별주만) 매도 거래세
-function dtNetRet(ent,xp,etf,feePct){const f=(feePct||0)/100,tax=etf?0:DT_TAX/100;return xp*(1-f-tax)/(ent*(1+f))-1;}
+const DT_GTAX=15.4;   // 국내 레버리지·인버스 ETF 매매차익 배당소득세 %(이익에만)
+function dtNetRet(ent,xp,etf,feePct,gtax){
+  const f=(feePct||0)/100;
+  if(gtax){let g=xp/ent-1;if(g>0)g*=1-DT_GTAX/100;return (1+g)*(1-f)/(1+f)-1;}
+  const tax=etf?0:DT_TAX/100;return xp*(1-f-tax)/(ent*(1+f))-1;
+}
+// 당일 익절 목표가: 시가 × (1 + tp%)를 호가단위로 올림
+function dtTpPrice(open,tp,etf){const t=krTick(open*(1+tp/100),etf);return Math.ceil(open*(1+tp/100)/t)*t;}
+function dtExitMode(p,dt){return p&&p.exit==='tp'&&p.tp>0?'tp':dt.exit;}
 // A. 모의매매 — 종목쌍·종목별로 시작일 이후 날짜를 순서대로 확정. 신호일 시가 매수 → 다음 거래일 시가(또는 당일 종가) 매도.
 // 반환: 아직 청산 전인 포지션
 function dtProcessPair(dt,p,m,cs,bars,today,afterClose){
@@ -2092,13 +2105,14 @@ function dtProcessPair(dt,p,m,cs,bars,today,afterClose){
     const s=dtUsChange(bars,cs[i-1].d,day.d);
     if(!s||!dtHit(p,s.chg)){dt.done[k0]=day.d;continue;}   // 신호는 시가 전에 정해지므로 장중에도 확정
     const key=day.d+'|'+k0;
-    let xd=null,xp=null;
-    if(dt.exit==='close'){if(day.d<today||afterClose){xd=day.d;xp=day.c;}}
+    let xd=null,xp=null;const ex=dtExitMode(p,dt),tgt=ex==='tp'?dtTpPrice(day.o,p.tp,m.etf):null;
+    if(ex==='tp'){if(day.h>=tgt){xd=day.d;xp=tgt;}else if(day.d<today||afterClose){xd=day.d;xp=day.c;}}
+    else if(ex==='close'){if(day.d<today||afterClose){xd=day.d;xp=day.c;}}
     else if(cs[i+1]&&cs[i+1].o>0){xd=cs[i+1].d;xp=cs[i+1].o;}
-    if(!xp){open.push({key,d:day.d,pair:p.id,us:p.us,chg:s.chg,code:m.code,name:m.name,etf:!!m.etf,ent:day.o});break;}
+    if(!xp){open.push({key,d:day.d,pair:p.id,us:p.us,chg:s.chg,code:m.code,name:m.name,etf:!!m.etf,ent:day.o,tgt});break;}
     if(!dt.paper.some(x=>x.key===key))
       dt.paper.push({key,d:day.d,pair:p.id,label:p.label||p.us,us:p.us,dir:p.dir,th:p.th,chg:s.chg,code:m.code,name:m.name,etf:!!m.etf,
-        exit:dt.exit,amt:dt.amt,ent:day.o,xd,xp,ret:dtNetRet(day.o,xp,m.etf,dt.fee)});
+        exit:ex,tp:ex==='tp'?p.tp:undefined,amt:dt.amt,ent:day.o,xd,xp,ret:dtNetRet(day.o,xp,m.etf,dt.fee,m.gtax)});
     dt.done[k0]=day.d;
   }
   return open;
@@ -2257,7 +2271,10 @@ function dtScreen(){
   </div>`;
 }
 function dtBadge(t,c){return `<span style="font-size:11px;padding:3px 9px;border-radius:20px;background:${c}22;color:${c};font-weight:700;white-space:nowrap">${t}</span>`;}
-function dtRuleText(p){return p.dir==='up'?`상승 ≥ +${p.th}% → 매수`:`하락 ≤ −${p.th}% → 매수`;}
+function dtRuleText(p){return (p.dir==='up'?`상승 ≥ +${p.th}% → 매수`:`하락 ≤ −${p.th}% → 매수`)+(p.exit==='tp'&&p.tp>0?` · +${p.tp}% 익절`:'');}
+function dtExitLabel(p,dt){const ex=dtExitMode(p,dt);return ex==='tp'?`시가 +${p.tp}% 지정가 익절, 못 닿으면 당일 종가 매도`:ex==='close'?'당일 종가 매도':'다음 거래일 시가 매도';}
+// 인버스 ETF만 담은 쌍(급등 역추세)은 '상승 후 매수' 손실 경고 대상이 아님
+function dtIsFade(p){return p.codes.length>0&&p.codes.every(c=>/인버스/.test(c.name||''));}
 function dtPairCard(p,dt){
   const v=dtCache.sig[p.id],today=kstYmd();
   let badge=dtBadge('데이터 없음',T.text3),body='',rows='';
@@ -2267,10 +2284,10 @@ function dtPairCard(p,dt){
     badge=v.hit?dtBadge(whenL+' 매수 ✓'+(p.weak?' (근거 약함)':''),p.weak?T.amber:T.green):v.contra?dtBadge('급등 · 매수 보류',T.amber):dtBadge('신호 없음',T.text3);
     const span=v.s.n>1?`${v.s.n}개 세션 누적, ${v.s.to.slice(5)} 종가`:`${v.s.to.slice(5)} 종가`;
     body=`미국 ${esc(p.us)} <b style="color:${pctC(v.s.chg)}">${pct(v.s.chg*100)}</b> (${span}, 기준 ${p.dir==='up'?'+':'−'}${p.th}%)${v.ref?` · ${esc(p.ref)} ${pct(v.ref.chg*100)}`:''}`;
-    if(v.hit)body+=`<div style="color:${T.text};margin-top:4px">${v.when==='preopen'?'08:30~09:00 시장가 매수 → 09:00 시가 체결':v.when==='today'?'오늘 시가 매수 신호였습니다 — 시가 이후 진입은 백테스트(시가 체결)와 다릅니다':'다음 거래일 08:30~09:00 시장가 매수'} · ${dt.exit==='close'?'당일 종가':'다음 거래일 시가'} 매도</div>`;
+    if(v.hit)body+=`<div style="color:${T.text};margin-top:4px">${v.when==='preopen'?'08:30~09:00 시장가 매수 → 09:00 시가 체결':v.when==='today'?'오늘 시가 매수 신호였습니다 — 시가 이후 진입은 백테스트(시가 체결)와 다릅니다':'다음 거래일 08:30~09:00 시장가 매수'} · ${dtExitLabel(p,dt)}</div>`;
     if(v.contra)body+=`<div style="color:${T.amber};margin-top:4px">미국 급등 다음날은 국내 시가가 고점인 경향입니다(반도체 시가→종가 평균 −0.2~−0.3%). 사지 말고, 팔 계획이면 시가에 파세요.</div>`;
   }
-  if(p.dir==='up')body+=`<div style="color:${T.red};margin-top:4px">이 방향(상승 후 매수)은 백테스트상 손실이었습니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%).</div>`;
+  if(p.dir==='up'&&!dtIsFade(p))body+=`<div style="color:${T.red};margin-top:4px">이 방향(상승 후 매수)은 백테스트상 손실이었습니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%).</div>`;
   if(p.note)body+=`<div style="color:${T.amber};margin-top:4px">${esc(p.note)}</div>`;
   if(v&&v.live)body+=`<div style="color:${T.text3};margin-top:4px">미국 장중 ${esc(p.us)} ${pct(v.live.chg*100)}${v.refLive&&v.refLive.chg!=null?` · ${esc(p.ref)} ${pct(v.refLive.chg*100)}`:''} — 마감 등락으로 다음 거래일 신호가 정해집니다</div>`;
   rows=p.codes.map(m=>{
@@ -2278,7 +2295,7 @@ function dtPairCard(p,dt){
     const cur=r&&r.cur>0?r.cur:last?last.c:0,openPx=last&&last.d===today?last.o:null;
     const can=v&&v.hit&&v.when!=='next',held=dtBalRow(m.code);
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid ${T.border}">
-      <div><div style="font-size:13px;color:${T.text}">${esc(m.name)} <span class="mono" style="font-size:10px;color:${T.text3}">${m.code}</span>${m.etf?` <span style="font-size:10px;color:${T.teal}">ETF</span>`:` <span style="font-size:10px;color:${T.text3}">거래세 ${DT_TAX}%</span>`}</div>
+      <div><div style="font-size:13px;color:${T.text}">${esc(m.name)} <span class="mono" style="font-size:10px;color:${T.text3}">${m.code}</span>${m.etf?` <span style="font-size:10px;color:${T.teal}">ETF${m.gtax?` · 차익과세 ${DT_GTAX}%`:''}</span>`:` <span style="font-size:10px;color:${T.text3}">거래세 ${DT_TAX}%</span>`}</div>
         <div class="mono" style="font-size:11px;color:${T.text2}">${openPx?`시가 ${won(openPx)} · `:''}현재 ${cur?won(cur):'—'}${held?` · <span style="color:${T.amber}">보유 ${fmtQty(held.qty,'주')}</span>`:''}</div></div>
       <button onclick="dtOrder('${m.code}','${can||!held?'buy':'sell'}')" class="tap" style="padding:8px 14px;background:${can?(p.weak?T.amber:T.green):T.bg3};color:${can?'#000':T.amber};border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap">⚡ 매매</button>
     </div>`;}).join('');
@@ -2291,18 +2308,19 @@ function dtSignalView(dt){
   const exits=[].concat(...Object.values(dtCache.open).map(x=>x||[]));
   const recent=dt.orders.filter(o=>o.d>=dtAddDays(today,-3)).slice().reverse();
   const exitCard=x=>{
-    const r=dtCache.rt[x.code],cur=r&&r.cur>0?r.cur:null;
-    const when=dt.exit==='close'?'오늘 15:20 전까지 매도 (종가 청산)':x.d===today?'다음 거래일 08:30~09:00 시장가 매도 → 09:00 시가 체결':'지금 시장가 매도 → 09:00 시가 체결 (장중이면 즉시 체결)';
+    const r=dtCache.rt[x.code],cur=r&&r.cur>0?r.cur:null,pp=dtPair(x.pair),ex=dtExitMode(pp,dt);
+    const when=ex==='tp'?`익절 지정가 ${won(x.tgt)}원(시가 +${pp.tp}%)에 매도 주문 → 체결 안 되면 15:20 전 취소하고 시장가 매도 (종가 청산)`
+      :ex==='close'?'오늘 15:20 전까지 매도 (종가 청산)':x.d===today?'다음 거래일 08:30~09:00 시장가 매도 → 09:00 시가 체결':'지금 시장가 매도 → 09:00 시가 체결 (장중이면 즉시 체결)';
     return card(`<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px;font-weight:700;color:${T.text}">${esc(x.name)}</span>${dtBadge(x.d.slice(5)+' 매수',T.amber)}</div>
       <div style="font-size:12px;color:${T.text2};margin-top:6px;line-height:1.6">${esc(x.us)} ${pct(x.chg*100)} 신호 · 모의 진입(시가) ${won(x.ent)}${cur?` · 현재 ${won(cur)} <span style="color:${pctC(cur-x.ent)}">(${pct((cur/x.ent-1)*100)})</span>`:''}<br>${when}</div>
-      ${btn('매도 주문',`dtOrder('${x.code}','sell')`,T.red,'margin-top:10px;padding:10px')}`);
+      ${ex==='tp'?btn(`익절 지정가 매도 (${won(x.tgt)}원)`,`dtOrder('${x.code}','sell',${x.tgt})`,T.red,'margin-top:10px;padding:10px'):btn('매도 주문',`dtOrder('${x.code}','sell')`,T.red,'margin-top:10px;padding:10px')}`);
   };
   return `${dtHoldView(dt)}
     ${secL('미국 밤사이 → 매수 대상')}
     ${dt.pairs.length?dt.pairs.map(p=>dtPairCard(p,dt)).join(''):card(`<div style="font-size:13px;color:${T.text2}">설정에서 종목쌍을 추가하세요.</div>`)}
     ${exits.length?secL('매도 대상 (모의매매 보유 기준)')+exits.map(exitCard).join(''):''}
     ${recent.length?secL('최근 주문 (3일)')+card(recent.map(o=>`<div style="display:flex;justify-content:space-between;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px solid ${T.border}"><span style="color:${o.side==='buy'?T.green:T.red};font-weight:700">${o.side==='buy'?'매수':'매도'}</span><span style="color:${T.text};flex:1">${esc(o.name)}</span><span class="mono" style="color:${T.text2}">${o.qty}주 · ${o.price?won(o.price):'시장가'}</span><span class="mono" style="color:${T.text3}">${o.d.slice(5)} ${o.hm}</span></div>`).join('')+`<div style="font-size:10px;color:${T.text3};margin-top:6px">체결 여부는 증권사 앱에서 확인하세요.</div>`):''}
-    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:12px">· 미국 등락은 국내 시가에 대부분 반영되고 장중엔 반대로 움직이는 경향이 있어, 미국 급락 다음날 시가에 사서 그다음 거래일 시가에 파는 방식입니다.<br>· 앱은 자동으로 주문하지 않습니다. ⚡ 매매 버튼에서 매수/매도·수량·가격을 확인하고 직접 전송하세요. 08:30 이전 주문은 증권사에서 거부될 수 있습니다.<br>· 단타 주문·체결은 포트폴리오 보유 종목에 반영되지 않습니다.<br>· 근거: analysis/daytrade/us_signal.py · sector_signal.py (2014-07~2026-10)</div>`;
+    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:12px">· 미국 등락은 국내 시가에 대부분 반영되고 장중엔 반대로 움직이는 경향이 있어, 미국 급락 다음날 시가에 사서 그다음 거래일 시가에 파는 방식입니다.<br>· 앱은 자동으로 주문하지 않습니다. ⚡ 매매 버튼에서 매수/매도·수량·가격을 확인하고 직접 전송하세요. 08:30 이전 주문은 증권사에서 거부될 수 있습니다.<br>· 단타 주문·체결은 포트폴리오 보유 종목에 반영되지 않습니다.<br>· 급등 역추세 쌍은 매수 후 시가 +0.5% 지정가 매도를 걸고, 체결 안 되면 15:20 전에 시장가로 정리합니다.<br>· 근거: analysis/daytrade/us_signal.py · sector_signal.py · surge_tp.py (2014-07~2026-10)</div>`;
 }
 function dtPaperView(dt){
   const list=dt.paper.slice().sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:a.key<b.key?1:-1),s=dtStats(list);
@@ -2339,7 +2357,9 @@ function dtCfgView(dt){
       <div>${lab('참고 티커 (표시만)')}<input id="dtPR_${p.id}" type="text" value="${esc(p.ref||'')}" placeholder="예: SOXL"></div>
     </div>
     ${lab('방향')}<div style="display:flex;gap:6px">${[['down','하락 후 매수 (권장)'],['up','상승 후 매수']].map(([v,l])=>{const on=p.dir===v;return `<button onclick="dtPairDir('${p.id}','${v}')" class="tap" style="flex:1;padding:9px 2px;border-radius:10px;font-size:12px;font-weight:700;background:${on?(v==='up'?T.amber:T.teal):T.bg3};color:${on?'#000':T.text2}">${l}</button>`;}).join('')}</div>
-    <div style="display:flex;gap:8px;margin-top:10px"><button onclick="dtSavePair('${p.id}')" class="tap" style="${sbtn};flex:1">이름·티커·기준 저장</button><button onclick="dtRemovePair('${p.id}')" class="tap" style="${sm};background:${T.red}22;color:${T.red}">쌍 삭제</button></div>
+    ${lab('매도 방식')}<div style="display:flex;gap:6px">${[['','공통 설정 ('+(dt.exit==='close'?'당일 종가':'다음날 시가')+')'],['tp','당일 익절 (+%)']].map(([v,l])=>{const on=(p.exit==='tp')===(v==='tp');return `<button onclick="dtPairExit('${p.id}','${v}')" class="tap" style="flex:1;padding:9px 2px;border-radius:10px;font-size:12px;font-weight:700;background:${on?T.teal:T.bg3};color:${on?'#000':T.text2}">${l}</button>`;}).join('')}</div>
+    ${p.exit==='tp'?`${lab('익절 목표 (시가 대비 %, 못 닿으면 당일 종가 매도)')}<input id="dtPP_${p.id}" type="number" step="0.1" value="${p.tp||0.5}">`:''}
+    <div style="display:flex;gap:8px;margin-top:10px"><button onclick="dtSavePair('${p.id}')" class="tap" style="${sbtn};flex:1">${p.exit==='tp'?'이름·티커·기준·익절 저장':'이름·티커·기준 저장'}</button><button onclick="dtRemovePair('${p.id}')" class="tap" style="${sm};background:${T.red}22;color:${T.red}">쌍 삭제</button></div>
     ${lab('국내 종목')}
     ${p.codes.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${T.border}">
         <div><span style="font-size:13px;color:${T.text}">${esc(m.name)}</span> <span class="mono" style="font-size:11px;color:${T.text3}">${m.code}</span> <span style="font-size:10px;color:${m.etf?T.teal:T.text3}">${m.etf?'ETF':'개별주'}</span></div>
@@ -2349,7 +2369,9 @@ function dtCfgView(dt){
   const BT=[['SOXX ≤ −3% → SK하이닉스·삼성전자','31','+0.96%','58%','0.96','−21%',0],['SPY ≤ −1.5% → KODEX 200·코스닥150','31','+0.56%','61%','0.94','−13%',0],
             ['LLY ≤ −4% → KODEX 바이오·TIGER 헬스케어','7','+1.37%','64%','0.85','−5%',0],['ALB ≤ −4% → KODEX 2차전지산업·에코프로','33','+0.88%','60%','0.90','−37%',0],
             ['XOM ≤ −4% → KODEX 에너지화학·롯데케미칼','9','+0.45%','61%','0.26','−14%',2],
-            ['기본 5쌍 합산','111','+0.81%','60%','1.28','−13%',1],['(참고) 반도체·지수 2쌍만','62','+0.76%','59%','1.09','−15%',0],
+            ['QQQ ≥ +2% → KODEX 인버스·코스닥150선물인버스, +0.5% 익절','28','+0.14%','77%','1.04','−3%',0],
+            ['기본 5쌍 합산 (급등 역추세 제외)','111','+0.81%','60%','1.28','−13%',1],['(참고) 반도체·지수 2쌍만','62','+0.76%','59%','1.09','−15%',0],
+            ['SOXX ≥ +2% → 반도체 2종목, +0.5% 익절','71','−0.39%','66%','−2.19','−80%',3],['SPY ≥ +1% → KODEX 200·코스닥150, +0.5% 익절','65','−0.13%','60%','−0.95','−40%',3],
             ['XLE ≤ −3% → SK이노베이션·S-Oil','21','−0.01%','49%','−0.01','−33%',3],
             ['SOXL > 0% → 반도체 2종목, 당일 종가','273','−0.35%','39%','−2.55','−100%',3],['SOXL > +3% → 반도체 2종목, 다음날 시가','147','−0.33%','42%','−1.16','−95%',3]];
   return `${secL('공통 설정')}
@@ -2364,7 +2386,7 @@ function dtCfgView(dt){
       <tr style="color:${T.text3}"><td style="text-align:left">신호 → 종목</td>${['연','거래당','승률','Sharpe','MDD'].map(h=>`<td style="padding-left:6px;white-space:nowrap">${h}</td>`).join('')}</tr>
       ${BT.map(r=>`<tr style="color:${[T.text2,T.teal,T.amber,T.red][r[6]]}">${r.slice(0,6).map((c,j)=>`<td style="padding:4px 0 4px ${j?6:0}px;${j?'white-space:nowrap':'text-align:left;font-family:inherit'}">${c}</td>`).join('')}</tr>`).join('')}
     </table>
-    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 위 7줄은 다음날 시가 매도 기준입니다. 기본 5쌍은 2014-19·2020-22·2023-26 Sharpe가 1.07·1.55·1.48로 고르게 플러스였습니다.<br>· 바이오·2차전지·에너지는 약 700개 조합(89쌍 × 기준 8개) 중에서 고른 값이라 실제 성과는 표보다 낮을 수 있습니다. 주황 줄(에너지)은 통계적으로 약합니다.<br>· 원전·전력(URA·CCJ·ETN·VRT → 두산에너빌리티·한전기술 등)은 기간별 부호가 엇갈려 넣지 않았습니다.<br>· 같은 신호라도 당일 종가에 팔면 2023년 이후 거래당 0 근처라 다음날 시가 매도를 권장합니다.<br>· 기준을 낮추면(SOXX −2%) 신호는 두 배지만 Sharpe가 0.74로 떨어집니다.<br>· 빨간 줄(미국 상승 후 매수)은 국내 시가가 이미 올라 시작해 장중에 밀리는 탓에 손실이었습니다.</div>`)}`;
+    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 급등 역추세: 미국 급등 다음날 시가에 사서 +0.5~1% 익절(못 닿으면 종가)하는 방식은 종목을 사면 전 섹터 손실(빨간 '익절' 줄)이고, 인버스 ETF로 뒤집으면 플러스입니다. 인버스 ETF 매매차익 15.4% 과세를 반영했습니다.<br>· 그 밖의 줄은 다음날 시가 매도 기준입니다. 기본 5쌍은 2014-19·2020-22·2023-26 Sharpe가 1.07·1.55·1.48로 고르게 플러스였습니다.<br>· 바이오·2차전지·에너지는 약 700개 조합(89쌍 × 기준 8개) 중에서 고른 값이라 실제 성과는 표보다 낮을 수 있습니다. 주황 줄(에너지)은 통계적으로 약합니다.<br>· 원전·전력(URA·CCJ·ETN·VRT → 두산에너빌리티·한전기술 등)은 기간별 부호가 엇갈려 넣지 않았습니다.<br>· 같은 신호라도 당일 종가에 팔면 2023년 이후 거래당 0 근처라 다음날 시가 매도를 권장합니다.<br>· 기준을 낮추면(SOXX −2%) 신호는 두 배지만 Sharpe가 0.74로 떨어집니다.<br>· 빨간 줄(미국 상승 후 매수)은 국내 시가가 이미 올라 시작해 장중에 밀리는 탓에 손실이었습니다.</div>`)}`;
 }
 function dtSet(key,v){const dt=dtState();dt[key]=v;save();dtCompute();render();}
 function dtSaveNum(key,id){
@@ -2387,13 +2409,19 @@ function dtSavePair(id){
   if(!/^[A-Z0-9.^=-]{1,12}$/.test(us)){alert('미국 티커를 입력하세요 (예: SOXX).');return;}
   if(ref&&!/^[A-Z0-9.^=-]{1,12}$/.test(ref)){alert('참고 티커 형식이 올바르지 않습니다.');return;}
   if(!(th>0&&th<50)){alert('기준 등락은 0보다 큰 %로 입력하세요 (예: 3).');return;}
+  if(p.exit==='tp'){const tp=parseFloat(g('dtPP_'));if(!(tp>0&&tp<=10)){alert('익절 목표는 0~10% 사이로 입력하세요 (예: 0.5).');return;}p.tp=tp;}
   p.label=g('dtPL_')||us;p.us=us;p.ref=ref;p.th=th;
   const a=document.activeElement;if(a&&a.blur)a.blur();
   save();dtCompute();render();dtRefresh(false);
 }
+function dtPairExit(id,v){
+  const p=dtPair(id);if(!p)return;
+  if(v==='tp'){p.exit='tp';if(!(p.tp>0))p.tp=0.5;}else delete p.exit;
+  save();dtCompute();render();
+}
 function dtPairDir(id,dir){
   const p=dtPair(id);if(!p)return;
-  if(dir==='up'&&!confirm('상승 후 매수는 백테스트상 손실 방향입니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%). 그래도 바꿀까요?'))return;
+  if(dir==='up'&&!dtIsFade(p)&&!confirm('상승 후 매수는 백테스트상 손실 방향입니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%). 그래도 바꿀까요?'))return;
   p.dir=dir;save();dtCompute();render();
 }
 function dtRemovePair(id){
@@ -2410,7 +2438,7 @@ async function dtAddCode(pid){
   let name=code,etf=false;
   try{const d=await nativeGet('https://m.stock.naver.com/api/stock/'+code+'/basic');name=d.stockName||code;etf=d.stockEndType==='etf';}catch(e){}
   if(/레버리지|인버스|곱버스|2X/i.test(name)&&!confirm(name+'은(는) 레버리지·인버스 ETF라 매매차익에 15.4%가 과세됩니다(모의 수익에는 미반영). 그래도 추가할까요?'))return;
-  p.codes.push({code,name,etf});save();
+  p.codes.push(Object.assign({code,name,etf},/레버리지|인버스|2X/i.test(name)?{gtax:true}:{}));save();
   el.value='';
   render();dtRefresh(false);
 }
@@ -2429,7 +2457,7 @@ function dtResetPaper(){
 
 // B. 주문 — 신호를 보고 사용자가 직접 전송. 장 전(9시 전) 매수는 시장가 = 시가 체결, 장중 매수는 현재가 지정가, 매도는 시장가.
 // 수량 = 1회 금액 ÷ 현재가(장 전에는 전일 종가)
-function dtOrder(code,side){
+function dtOrder(code,side,limitPx){
   const dt=dtState(),m=dtFindCode(code);
   const hasKis=kisHasKeys(),hasKiwoom=kiwoomHasKeys();
   if(!hasKis&&!hasKiwoom){alert('설정 탭에서 한국투자증권 또는 키움증권 API 키를 먼저 등록하세요.');return;}
@@ -2437,6 +2465,7 @@ function dtOrder(code,side){
   const broker=bal&&(bal.broker==='kis'?hasKis:hasKiwoom)?bal.broker:hasKis?'kis':'kiwoom';
   window._dtOrder={code,side,broker,type:'market',qty:0,price:cur};
   dtOrdDefaults(window._dtOrder,pre);
+  if(limitPx>0){window._dtOrder.type='limit';window._dtOrder.price=limitPx;}   // 익절 지정가
   showModal(dtOrderHtml());
 }
 // 매수: 1회 금액 ÷ 현재가, 장 전 시장가 / 장중 지정가. 매도: 잔고 매도가능 수량(없으면 직전 단타 매수 수량), 시장가
