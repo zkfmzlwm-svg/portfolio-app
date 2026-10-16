@@ -132,7 +132,7 @@ ok(clean(out)&&out.includes('백테스트상 손실')&&out.includes('데이터 �
 // 모의매매·설정 화면
 for(const sub of['paper','cfg']){run(`dtSub='${sub}';render()`);out=els.app._html;ok(clean(out),'단타/'+sub+' 렌더');
   if(sub==='paper')ok(out.includes('거래당')&&out.includes('반도체 (SOXX)'),'모의매매: 성과·쌍별');
-  if(sub==='cfg')ok(out.includes('하락 후 매수 (권장)')&&out.includes('기본 2쌍 합산')&&out.includes('dtPU_p1'),'설정: 쌍 편집·백테스트 표');}
+  if(sub==='cfg')ok(out.includes('하락 후 매수 (권장)')&&out.includes('기본 5쌍 합산')&&out.includes('LLY ≤ −4%')&&out.includes('dtPU_p1'),'설정: 쌍 편집·백테스트 표(5쌍)');}
 
 // 6. 설정 편집
 vals.dtPL_p2='지수2';vals.dtPU_p2='qqq';vals.dtPR_p2='';vals.dtPT_p2='2';
@@ -199,11 +199,22 @@ run("closeModal()");
 // 8. 마이그레이션: v6.0(변동성 돌파 구조) → 새 기본 쌍, 주문 기록만 유지
 const mig=run(`migratePortfolio({ver:'6.0',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
   dt:{codes:[{code:'069500'}],k:0.7,filt:'none',exit:'nextopen',amt:1000000,fee:0.015,start:'2026-10-01',paper:[{key:'old'}],done:{'069500':'2026-10-10'},obs:{},orders:[{d:'2026-10-12',code:'069500'}]}})`);
-ok(mig.ver==='6.1'&&mig.dt.pairs.length===2&&mig.dt.pairs[0].us==='SOXX'&&mig.dt.pairs[0].th===3&&mig.dt.pairs[1].us==='SPY'&&mig.dt.pairs[1].th===1.5,'v6.0 → 기본 2쌍(SOXX −3%, SPY −1.5%)');
+ok(mig.ver==='6.1'&&mig.dt.pairs.length===5&&mig.dt.pairs[0].us==='SOXX'&&mig.dt.pairs[0].th===3&&mig.dt.pairs[1].us==='SPY'&&mig.dt.pairs[1].th===1.5&&mig.dt.pairs.map(p=>p.us).slice(2).join()==='LLY,ALB,XOM','v6.0 → 기본 5쌍(SOXX −3%, SPY −1.5%, LLY·ALB·XOM −4%)');
 ok(mig.dt.paper.length===0&&mig.dt.orders.length===1&&mig.dt.start===run('kstYmd()')&&!mig.dt.codes,'모의매매 새로 시작 · 주문 기록 유지');
 const kept=run(`migratePortfolio({ver:'6.1',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
   dt:{pairs:[{id:'x',us:'QQQ',dir:'down',th:2,codes:[]}],exit:'close',amt:500000,fee:0.01,start:'2026-09-01',paper:[{key:'a'}]}})`);
-ok(kept.dt.pairs.length===1&&kept.dt.pairs[0].us==='QQQ'&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.done==='object','v6.1 설정·기록 유지 + 누락 필드 보완');
+ok(kept.dt.pairs.length===4&&kept.dt.pairs[0].us==='QQQ'&&kept.dt.pairs.slice(1).map(p=>p.id).join()==='bio,bat,eng'&&kept.dt.sectorsV1===true&&kept.dt.start==='2026-09-01'&&kept.dt.paper.length===1&&Array.isArray(kept.dt.orders)&&typeof kept.dt.done==='object','v6.1 설정·기록 유지 + 누락 필드 보완');
+
+// v6.3: 바이오·2차전지·에너지 쌍 — 1회만 추가, 지운 쌍은 다시 안 넣음, 근거 약함 표시
+{const once=run(`migratePortfolio({ver:'6.1',targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[],
+   dt:{pairs:[{id:'p1',us:'SOXX',dir:'down',th:3,codes:[]},{id:'bio',us:'LLY',dir:'down',th:5,codes:[]}],start:'2026-09-01'}})`);
+ ok(once.dt.pairs.length===4&&once.dt.pairs.find(p=>p.id==='bio').th===5,'같은 id 쌍(사용자 수정)은 덮어쓰지 않음');
+ once.dt.pairs=once.dt.pairs.filter(p=>p.id!=='eng');sandbox.__once=once;
+ const again=run('migratePortfolio(__once)');ok(again.dt.pairs.length===3&&!again.dt.pairs.some(p=>p.id==='eng'),'지운 쌍은 다시 추가 안 함');
+ const d=run('DT_DEFAULT');ok(d.pairs.find(p=>p.id==='bat').codes.map(c=>c.code).join()==='305720,086520'&&d.pairs.find(p=>p.id==='bio').codes.every(c=>c.etf)&&d.pairs.find(p=>p.id==='eng').weak===true,'기본 쌍 구성');
+ run("portfolio.dt=JSON.parse(JSON.stringify(DT_DEFAULT));portfolio.dt.start=kstYmd();dtCache.sig={eng:{s:{chg:-0.05,n:1,to:'2026-10-15'},hit:true,when:'preopen'}};dtCache.rt={};dtCache.series={}");
+ const c=run("dtPairCard(dtPair('eng'),portfolio.dt)");
+ ok(clean(c)&&c.includes('근거 약함')&&c.includes('(근거 약함)')&&c.includes('color:#FFB020'),'에너지 쌍 카드: 근거 약함 메모·주황 배지');}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
