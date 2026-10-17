@@ -33,14 +33,15 @@ ok(Math.abs(c.kr+c.us+c.bonds+c.gold+c.crypto-c.total)<1,'자산 합=총계');
 const rows=run('rebalRows()');
 ok(rows.length===5,'rebalRows 5');
 const plan=run('newMoneyPlan(200*10000)');
-ok(plan.allocs.length===5,'alloc 5');
+ok(plan.allocs.length===run('rebalRows().filter(r=>r.w>0).length'),'alloc = 목표>0 자산군 수');
 const sumAlloc=plan.allocs.reduce((s,a)=>s+a.amt,0);
 ok(Math.abs(sumAlloc-2000000)<2,`월 200만 전량 배분 (${sumAlloc})`);
 ok(plan.months>0,'달성 개월수: '+plan.months);
 ok(plan.Xstar>=c.total,'Xstar>=현재총액');
 
 // v5.5: 목표비중 금 25·코인 15, 월 투자금 기본 250만원
-{const ft=run('FIXED_TARGETS');ok(ft.kr===20&&ft.us===30&&ft.bonds===10&&ft.gold===25&&ft.crypto===15,'고정비중 20/30/10/25/15');
+{const ft=run('FIXED_TARGETS');ok(ft.kr===30&&ft.us===20&&ft.bonds===5&&ft.gold===25&&ft.crypto===20,'10억 목표형 고정비중 30/20/5/25/20');
+ const st=run('STABLE_TARGETS');ok(st.kr===20&&st.us===30&&st.bonds===10&&st.gold===25&&st.crypto===15,'안정형 20/30/10/25/15');
  ok(JSON.stringify(run('INIT.targets'))===JSON.stringify(ft),'신규 설치 목표비중 = 고정비중');
  ok(run('monthly')===250,'월 투자금 기본 250만원, got '+run('monthly'));
  // v6.1.2: 슬라이더로 바꾼 월 투자금은 저장되어 재실행 후에도 유지
@@ -54,9 +55,11 @@ ok(plan.Xstar>=c.total,'Xstar>=현재총액');
  run('portfolio.monthly=undefined');ok(run('savedMonthly()')===250,'저장값 없으면 250');
  run('setMonthly(250)');
  const old=run(`migratePortfolio({ver:'5.4',targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
- ok(old.targets.gold===25&&old.targets.crypto===15&&old.ver==='6.1','v5.4 저장 목표비중 → 25/15로 1회 교체');
- const kept=run(`migratePortfolio({ver:'5.5',targets:{kr:20,us:30,bonds:10,gold:20,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
- ok(kept.targets.gold===20&&kept.targets.crypto===20,'v5.5 이후 사용자가 바꾼 목표비중은 유지');}
+ ok(old.targets.kr===30&&old.targets.bonds===5&&old.targets.crypto===20&&old.ver==='6.1'&&old.goalTargetsV1,'v5.4 저장 목표비중 → 10억 목표형으로 교체');
+ const kept=run(`migratePortfolio({ver:'5.5',goalTargetsV1:true,targets:{kr:20,us:30,bonds:10,gold:20,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
+ ok(kept.targets.gold===20&&kept.targets.crypto===20,'v6.4 전환 후 사용자가 바꾼 목표비중은 유지');
+ const v63=run(`migratePortfolio({ver:'6.1',fixedTargetsV1:true,targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
+ ok(v63.targets.kr===30&&v63.targets.crypto===20&&v63.goal&&v63.goal.amt===10,'v6.3 사용자 → 10억 목표형 1회 교체 + 목표 기본값 10억');}
 // 고정 목표비중 합계 100 + 초기 로드 시 적용
 {const p=run('FIXED_TARGETS');const s=p.kr+p.us+p.bonds+p.gold+p.crypto;ok(s===100,'고정비중 합=100 ('+s+')');
  ok(run('portfolio.fixedTargetsV1')===true,'고정비중 1회 전환 플래그');}
@@ -163,7 +166,7 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
 
 // 7c. 장기보유(keep) 종목: 총자산엔 포함, 리밸런싱·스위칭 스타일 계산에서는 제외
 {
-  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets=Object.assign({},STABLE_TARGETS)");
   const full=run('calc()'),rb0=run('calc(true)');
   ok(Math.abs(full.total-rb0.total)<1,'keep 없으면 리밸런싱 기준=총자산');
   const s4v=run("(h=>h.qty*h.cur)(portfolio.holdings.kr_stocks.find(h=>h.id==='s4'))");
@@ -221,6 +224,7 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("migratePortfolio(JSON.parse(JSON.stringify(portfolio))).lastRebal")===run('portfolio.lastRebal'),'마이그레이션·백업 후 완료 기록 유지');
   run("delete portfolio.lastRebal");
 
+  run("portfolio.targets=Object.assign({},STABLE_TARGETS)");   // 아래 수시·트림 검증은 안정형(20/30/10/25/15) 기준 수치
   // 수시 기준(v5.4): 목표 금액 대비 ±25%. INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/25/15) → 전 자산군 초과
   const br=run("bandBreaches().map(r=>r.k)");
   ok(br.join()==='kr,us,bonds,gold,crypto','목표 금액 ±25% 초과 자산군: '+br.join());
@@ -234,7 +238,7 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(!run("homeRebalBanner()").includes('수시'),'홈 배너에 수시 알림 없음');
   run("portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3}");
   ok(run("bandBreaches().length")===0,'목표=현재면 밴드 초과 없음');
-  run("portfolio.targets=Object.assign({},FIXED_TARGETS)");
+  run("portfolio.targets=Object.assign({},STABLE_TARGETS)");
   ok(run("bandBreaches(rebalRows().map(r=>Object.assign({},r,{ev:0})))").length===0,'자산 0이면 밴드 경보 없음');
 
   // 상한 트림 — 국내(목표 초과 버킷): 10종목 상한 20%, B'=목표 금액, 상한 종목 ≤20%, 합계 = 자산군 매도액
@@ -268,10 +272,10 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   const sl=run("trimPlan('kr')"),slR=run("rebalRows()").find(r=>r.k==='kr');
   ok(sl.over&&Math.abs(sl.items.reduce((s,i)=>s+i.delta,0)+slR.diff)<1,'소폭 초과 버킷도 종목 합계=자산군 매도액');
   ok(sl.items.some(i=>!i.capped&&i.delta>0)&&run("trimCard('kr','국내')").includes('다른 종목에 현재 비중대로 다시 삽니다'),'트림액>자산군 매도액이면 나머지 재매수 안내');
-  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets=Object.assign({},STABLE_TARGETS)");
   ok(run("trimCard('kr','국내')").includes('나머지 종목은 현재 비중대로 매도합니다'),'대폭 초과 버킷은 나머지 비중대로 매도 안내');
   // 장기보유 종목은 트림 대상·N에서 제외
-  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;toggleKeep('s1')");
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets=Object.assign({},STABLE_TARGETS);toggleKeep('s1')");
   const kk=run("trimPlan('kr')");
   ok(kk.n===9&&!kk.items.some(i=>i.id==='s1'),'에스티팜 🔒 → 트림 대상·N 제외 (N='+kk.n+')');
   // 종목 3개 미만 → 미적용
@@ -281,7 +285,7 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("trimCard('us','해외')")==='','해외 버킷 비면 카드 생략');
   run("tab='home';render();tab='rebal';render()");pass++;
   ok(run("rebalScreen()").includes('주식 종목 상한 트림')&&run("rebalScreen()").includes('✂ 에스티팜')===false,'리밸런싱 화면 렌더(에스티팜 🔒이면 트림 표에 없음)');
-  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true");
+  run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets=Object.assign({},STABLE_TARGETS)");
   const scr=run("rebalScreen()");
   ok(scr.includes('✂ 에스티팜')&&scr.includes('수시 기준(목표 금액 ±25%) 넘은 자산군')&&!scr.includes('수시 리밸런싱 필요'),'리밸런싱 화면: 수시 초과는 참고 문구(경보 아님) + 에스티팜 트림 표시');
   // 홈 배너: 6·12월 미기록일 때만. 이번 달을 완료로 기록하면 사라짐

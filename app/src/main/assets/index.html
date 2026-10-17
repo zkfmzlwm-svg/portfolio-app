@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.3</title>
+<title>포트폴리오 v6.4</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -218,8 +218,15 @@ const kiwoomBalance=mock=>kiwoomCall('balance',mock);
 // v5.5: 사용자 선택으로 금 30→25, 코인 10→15 (analysis/rebal_cycle/gold_crypto.py — 2014-10~ 반기+±25% 기준
 //       Sharpe 1.43→1.38, MDD −13.1→−17.6%, 코인 위험기여 42→61%. 코인 기대수익이 낮아지면 격차 확대)
 // 리밸런싱 주기는 반기(6·12월) 정기 + 목표 금액 ±25% 수시 (analysis/rebal_cycle, 아래 REBAL_MONTHS·REBAL_REL).
-const FIXED_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
-const FIXED_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
+// v6.4: 사용자 요청으로 '10억 도달 확률 최대' 비중을 20/30/10/25/15 → 30/20/5/25/20으로 변경 (analysis/goal_sim — 몬테카를로 4,000경로,
+//       코인 상한 20% 안에서 1,300조합 탐색. 상위권은 코인 20·채권 0(30/25/0/25/20 등)이었으나 사용자 선택으로 채권 5% 유지,
+//       해외에서 5%p를 옮김. 10년·월 250만 기준 P(≥10억) 7.8→21.0%(채권 0%안 22.1%, 오차 내), 하위10%는 4.06→4.04억으로 거의 같음,
+//       2014-10~ 과거 MDD −17.6→−21.9%).
+//       이전 고정 비중은 STABLE_TARGETS(안정형)로 남겨 리밸런싱 탭에서 되돌릴 수 있음.
+const FIXED_TARGETS={kr:30,us:20,bonds:5,gold:25,crypto:20};
+const FIXED_LABEL='국내 30 · 해외 20 · 채권 5 · 금 25 · 코인 20%';
+const STABLE_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
+const STABLE_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
 
 // ── 단타 탭 기본값 (v6.1) — 미국 밤사이 신호 → 국내 연계 종목. 근거: analysis/daytrade/us_signal.py (2014-07~2026-10) ──
 // · 미국 등락은 국내 시가 갭에 대부분 반영되고(상관 0.3~0.7), 장중에는 오히려 반대로 움직임(반도체 −0.03~−0.11)
@@ -274,7 +281,7 @@ const OVERSEAS_WATCHLIST_SEED=[
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
-  targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},
+  targets:{kr:30,us:20,bonds:5,gold:25,crypto:20},
   holdings:{
     kr_stocks:[
       {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['성장주','소형주'],eps:1782,indPer:50},
@@ -721,6 +728,9 @@ function migratePortfolio(p){
     DT_SECTOR_PAIRS.forEach(x=>{if(!p.dt.pairs.some(q=>q.id===x.id))p.dt.pairs.push(JSON.parse(JSON.stringify(x)));});
     p.dt.sectorsV1=true;
   }
+  // v6.4: 10억 목표형 고정 비중으로 1회 교체(사용자 요청) + 목표 설정(portfolio.goal) 기본값
+  if(!p.goalTargetsV1){p.targets=Object.assign({},FIXED_TARGETS);p.goalTargetsV1=true;}
+  if(!p.goal||typeof p.goal!=='object')p.goal=goalDefault();
   p.ver='6.1';
   return p;
 }
@@ -778,7 +788,7 @@ function renderTags(tags){
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 const today=()=>new Date().toISOString().slice(0,10);
 function save(){Store.set('porto',JSON.stringify(portfolio));}
-function setMonthly(v){v=+v;if(!(v>=50&&v<=500))return;monthly=v;portfolio.monthly=v;save();}
+function setMonthly(v){v=+v;if(!(v>=50&&v<=500))return;monthly=v;portfolio.monthly=v;save();renderGoalCard();}
 // 보유종목 전체를 평탄화 (cat: kr/us/bonds/gold/crypto/watch)
 function flatHoldings(includeWatch){
   const out=[];
@@ -958,6 +968,157 @@ function trimPlan(key){
   }).sort((a,b)=>a.delta-b.delta);
   const trimSum=items.filter(i=>i.capped&&i.delta<0).reduce((a,i)=>a-i.delta,0);
   return Object.assign(base,{skip:false,items,trimSum});
+}
+
+// ── 🎯 10억 목표 시뮬레이션 (v6.4) — 근거 analysis/goal_sim (sim.py·pick.py) ──
+// 몬테카를로: 2014-10~2026-09 원화 월수익률(국내/해외/채권/금/코인, 평균 제거 로그수익률 ×1e4)을 12개월 블록으로 이어 붙이고
+// 평균은 아래 기대수익 가정으로 재중심화. 앱 규칙 그대로 매월 적립금은 부족 자산군에만, 6·12월 정기 + 목표 금액 ±25% 수시, 비용 0.3%.
+// 기대수익(연 기하, 원화 %)은 과거(11/15/3/13/65%)를 그대로 쓰면 낙관적이라 낮춘 값. 코인은 0%로 둔 비관 가정도 함께 표시.
+const GOAL_MU=[7,8,3.5,5,15],GOAL_MU_COIN0=[7,8,3.5,5,0],GOAL_KRX=3,GOAL_N=1000;
+const GOAL_L=(()=>{const a='10,287,300,-237,-1588,-407,508,459,207,1048,102,-337,-206,-163,-2273,113,-298,517,855,-4166,202,394,-310,-742,1111,340,-214,123,-254,-758,-131,-305,-373,-401,-1039,-266,330,254,277,-353,-287,-277,-143,-205,964,-518,476,497,-414,741,37,-553,177,458,-2354,261,-360,148,-265,-144,-259,317,-470,-254,2059,-227,-5,9,-722,1490,-326,-122,100,26,1072,-48,-287,644,769,-1626,332,101,350,1166,1523,-81,-304,-868,-1021,-1746,-126,-34,4,443,357,-138,434,349,-349,1665,157,-382,-20,461,1651,19,-125,-366,-268,-1534,-28,-80,-100,-404,-1212,-247,-282,-165,-195,-4,-196,128,246,23,1397,142,505,-195,-710,462,128,315,196,-60,2380,43,-386,-448,-17,-795,250,71,-150,17,1340,134,-211,-122,-248,-1485,550,152,257,244,2046,115,-134,-98,-267,4711,-27,158,136,-105,610,-238,-109,-182,-65,863,59,-86,123,315,4506,451,258,7,-265,-1048,-260,-125,-283,-414,3336,-108,-99,-335,-346,3887,320,-160,-169,-54,2664,-629,437,-235,226,-3668,3,-362,8,-182,-120,207,-595,-109,-235,-4612,-446,8,-79,-121,2471,-480,229,181,-112,-2406,-206,221,277,-186,-1708,47,253,-71,-319,1536,14,228,108,-283,-1389,-1506,-121,-208,-227,-1083,253,-560,219,385,-620,-342,-132,-90,-263,-5143,698,-1093,199,330,-1179,-115,641,30,175,-1221,-325,314,36,-47,782,217,163,339,-159,313,-834,531,172,83,2480,353,-563,490,289,4512,-582,247,-212,363,1598,-356,272,219,141,-879,400,-50,600,900,-642,26,-55,-274,-575,-2042,-51,-127,-234,-74,391,439,340,9,-323,-2266,-436,-55,-341,37,-1150,-715,182,620,645,2508,-1314,-748,462,32,-1060,969,-1420,372,-90,-3281,340,952,-122,477,2419,308,614,274,423,735,574,-240,-318,-127,-1063,263,387,-7,859,1659,-65,511,-167,-177,-153,-336,-684,-176,-710,-1401,1262,-650,-443,-431,1754,960,661,-244,-908,2864,278,65,-230,398,3306,50,71,156,-136,1199,87,199,-221,-702,2723,-82,310,359,337,1491,-488,230,-10,-52,886,-397,-380,29,-212,-945,-525,484,-145,-28,2873,404,-94,188,-64,-1043,-1186,342,-69,234,-2489,61,-509,-88,-118,-2118,142,-456,-94,456,698,-302,326,-364,103,186,-106,-679,-99,49,-1945,-1480,-249,-117,-584,-2280,424,-491,376,231,-4673,11,762,267,-362,1233,-1441,-236,-119,-99,-1638,548,-418,160,278,-61,678,612,-222,-330,64,-1075,-365,-458,-72,-2977,736,-1153,-616,-252,-1228,-123,264,99,233,2707,189,342,358,64,300,27,95,189,512,1504,225,301,317,247,116,-122,-178,-275,-340,-1249,190,457,-204,-376,660,-366,-137,-431,-214,-1177,-435,91,275,145,-1243,-860,-415,-155,-398,163,996,-315,-197,634,2116,389,292,-44,-313,-40,-686,335,352,35,728,492,373,316,91,-10,314,399,-227,-45,3217,-273,283,128,812,1194,-281,-276,-89,449,-1789,521,399,178,85,677,-170,163,30,-178,-1224,-426,-52,206,369,-167,-380,-135,-139,-140,-1580,-216,-71,-48,237,135,-472,256,94,786,1078,-304,600,215,-278,2895,406,200,308,320,-175,-11,-18,-129,392,334,-278,-212,285,115,-2321,227,-588,113,907,-533,464,-543,-258,91,565,1224,173,-468,-424,313,477,180,-69,-262,-386,-257,419,225,148,665,649,37,91,340,-1138,1743,337,145,1117,211,-522,284,212,417,-654,633,171,343,694,-2071,2073,-270,-261,-44,-903,1708,27,-49,1057,-1491,-2187,-239,185,703,-2052,2594,-61,304,-707,328,2428,576,-345,-560,395,-72,568,146,-82,-609,-2577,71,292,-1050,-2409,262,-866,-917,-766,-469,-46,-344,-504,357,1327,-1946,-243,-458,-890,108'.split(',').map(Number),o=[];for(let i=0;i<a.length;i+=5)o.push(a.slice(i,i+5).map(v=>v/1e4));return o;})();
+const GOAL_KEYS=['kr','us','bonds','gold','crypto'];
+function goalDefault(){const d=new Date();return{amt:10,end:`${d.getFullYear()+10}-${String(d.getMonth()+1).padStart(2,'0')}`,tax:true,pension:900,rate:13.2};}
+function goalCfg(){const g=Object.assign(goalDefault(),portfolio.goal||{});return g;}
+function goalMonthsLeft(g){g=g||goalCfg();const [y,m]=String(g.end).split('-').map(Number),d=new Date();return Math.max(1,(y-d.getFullYear())*12+(m-(d.getMonth()+1)));}
+// 연 세액공제 환급액(원): 연금저축·IRP 납입(만원, 한도 900) × 공제율
+function goalTaxRefund(g){g=g||goalCfg();return g.tax?Math.min(900,Math.max(0,+g.pension||0))*1e4*(+g.rate||0)/100:0;}
+const _goalIdx={};
+function goalPaths(n,M){
+  const c=_goalIdx[n];if(c&&c.M>=M)return c.idx;
+  let a=20261017;const rnd=()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  const T=GOAL_L.length,idx=[];
+  for(let i=0;i<n;i++){const r=[];while(r.length<M){const s0=Math.floor(rnd()*(T-11));for(let j=0;j<12;j++)r.push(s0+j);}idx.push(r.slice(0,M));}
+  _goalIdx[n]={M,idx};return idx;
+}
+// 최종 자산 분포(원). o: {W(목표 %객체), monthly(원), months, v0, tax(연 환급 원, 12월 재투자), krx(국내 연 초과수익 %), mu}
+function goalRun(o){
+  const n=o.n||GOAL_N,M=o.months,idx=goalPaths(n,Math.max(M,goalMonthsLeft()+24)),mu=o.mu||GOAL_MU;
+  const sw=GOAL_KEYS.reduce((s,k)=>s+(+o.W[k]||0),0)||1,W=GOAL_KEYS.map(k=>(+o.W[k]||0)/sw);
+  const eg=mu.map((x,j)=>(1+x/100)**(1/12)*(j===0?(1+(o.krx||0)/100)**(1/12):1));
+  const E=goalExp(),m0=new Date().getMonth()+1,out=new Float64Array(n),rel=REBAL_REL/100,v0=o.v0,goal=o.goal;
+  const w0=W[0],w1=W[1],w2=W[2],w3=W[3],w4=W[4],g0=eg[0],g1=eg[1],g2=eg[2],g3=eg[3],g4=eg[4];
+  const mons=new Int8Array(M),cs=new Float64Array(M);
+  for(let t=0;t<M;t++){mons[t]=(m0+t)%12+1;cs[t]=o.monthly+(mons[t]===12?(o.tax||0):0);}
+  for(let p=0;p<n;p++){
+    const ix=idx[p];let h0=w0*v0,h1=w1*v0,h2=w2*v0,h3=w3*v0,h4=w4*v0;
+    for(let t=0;t<M;t++){
+      const e=E[ix[t]];
+      h0*=e[0]*g0;h1*=e[1]*g1;h2*=e[2]*g2;h3*=e[3]*g3;h4*=e[4]*g4;
+      const c=cs[t],S=h0+h1+h2+h3+h4+c;
+      // 적립: 부족 자산군에만 부족액 비례, 남으면 목표비중 비례
+      const n0=Math.max(0,w0*S-h0),n1=Math.max(0,w1*S-h1),n2=Math.max(0,w2*S-h2),n3=Math.max(0,w3*S-h3),n4=Math.max(0,w4*S-h4);
+      const ns=n0+n1+n2+n3+n4,use=Math.min(c,ns);
+      if(ns>0){const f=use/ns;h0+=n0*f;h1+=n1*f;h2+=n2*f;h3+=n3*f;h4+=n4*f;}
+      const lf=c-use;if(lf>0){h0+=w0*lf;h1+=w1*lf;h2+=w2*lf;h3+=w3*lf;h4+=w4*lf;}
+      if(!(S>0))continue;
+      const mon=mons[t];
+      const hit=mon===6||mon===12||(w0>0&&Math.abs(h0/S/w0-1)>rel)||(w1>0&&Math.abs(h1/S/w1-1)>rel)||(w2>0&&Math.abs(h2/S/w2-1)>rel)||(w3>0&&Math.abs(h3/S/w3-1)>rel)||(w4>0&&Math.abs(h4/S/w4-1)>rel);
+      if(hit){
+        const tv=(Math.abs(h0/S-w0)+Math.abs(h1/S-w1)+Math.abs(h2/S-w2)+Math.abs(h3/S-w3)+Math.abs(h4/S-w4))/2*S,S2=S-tv*0.003;
+        h0=w0*S2;h1=w1*S2;h2=w2*S2;h3=w3*S2;h4=w4*S2;
+      }
+    }
+    out[p]=h0+h1+h2+h3+h4;
+  }
+  out.sort();const q=f=>out[Math.min(n-1,Math.floor(f*n))];
+  let k=0;for(let p=0;p<n;p++)if(out[p]>=goal)k++;
+  return{p:k/n*100,p10:q(.1),med:q(.5),p90:q(.9)};
+}
+let _goalE=null;
+function goalExp(){return _goalE||(_goalE=GOAL_L.map(r=>r.map(Math.exp)));}
+const _goalCache={};
+function goalEval(o){const key=JSON.stringify(o);if(!_goalCache[key])_goalCache[key]=goalRun(o);return _goalCache[key];}
+// 현재 설정 기준 입력값
+function goalBase(){
+  const g=goalCfg();
+  return{W:Object.assign({},portfolio.targets),monthly:monthly*1e4,months:goalMonthsLeft(g),v0:Math.round(calc().total/1e6)*1e6,   // 100만 단위(시세 갱신마다 재계산 방지)
+    tax:Math.round(goalTaxRefund(g)),krx:0,goal:g.amt*1e8};
+}
+// 확률 50%에 필요한 월 적립(만원, 10만 단위)
+function goalNeedMonthly(base){
+  let lo=0,hi=2000;
+  if(goalEval(Object.assign({},base,{monthly:hi*1e4,n:500})).p<50)return null;
+  while(hi-lo>10){const mid=Math.round((lo+hi)/20)*10;if(goalEval(Object.assign({},base,{monthly:mid*1e4,n:500})).p>=50)hi=mid;else lo=mid;}
+  return hi;
+}
+function goalRows(){
+  const b=goalBase(),g=goalCfg(),rf=goalTaxRefund(Object.assign({},g,{tax:true}));
+  const same=t=>GOAL_KEYS.every(k=>(+b.W[k]||0)===t[k]);
+  const rows=[['지금 설정',b]];
+  rows.push([`월 적립 +50만 (${monthly+50}만)`,Object.assign({},b,{monthly:(monthly+50)*1e4})]);
+  rows.push([`월 적립 +150만 (${monthly+150}만)`,Object.assign({},b,{monthly:(monthly+150)*1e4})]);
+  rows.push(['기간 +2년',Object.assign({},b,{months:b.months+24})]);
+  rows.push(g.tax?['절세 재투자 없이',Object.assign({},b,{tax:0})]:[`절세 재투자 (연 ${won(rf,true)})`,Object.assign({},b,{tax:Math.round(rf)})]);
+  rows.push([`스위칭 신호 준수 (국내 +${GOAL_KRX}%p 가정)`,Object.assign({},b,{krx:GOAL_KRX})]);
+  if(!same(FIXED_TARGETS))rows.push(['10억 목표형 비중 '+Object.values(FIXED_TARGETS).join('/'),Object.assign({},b,{W:Object.assign({},FIXED_TARGETS)})]);
+  if(!same(STABLE_TARGETS))rows.push(['안정형 비중 '+Object.values(STABLE_TARGETS).join('/'),Object.assign({},b,{W:Object.assign({},STABLE_TARGETS)})]);
+  rows.push([`조합: 월 +50만 + 절세 + 스위칭`,Object.assign({},b,{monthly:(monthly+50)*1e4,tax:Math.round(rf),krx:GOAL_KRX,W:Object.assign({},FIXED_TARGETS)})]);
+  return rows.map(([l,o])=>({l,o,r:goalEval(o)}));
+}
+function goalCardHtml(){
+  const g=goalCfg(),b=goalBase(),rows=goalRows(),cur=rows[0].r,c0=goalEval(Object.assign({},b,{mu:GOAL_MU_COIN0}));
+  const need=goalNeedMonthly(b),yrs=b.months/12,amt=g.amt;
+  const pc=p=>p>=50?T.green:p>=25?T.amber:T.red;
+  const isGoalW=GOAL_KEYS.every(k=>(+portfolio.targets[k]||0)===FIXED_TARGETS[k]);
+  return `<div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:14px;font-weight:700;color:${T.text}">🎯 ${amt}억 목표 · ${esc(g.end)}까지</span>
+      <button onclick="showGoalModal()" class="tap" style="padding:6px 10px;background:${T.bg3};color:${T.teal};border-radius:8px;font-size:12px;font-weight:700">설정 ✎</button>
+    </div>
+    <div style="font-size:11px;color:${T.text3};margin-top:3px">남은 ${yrs.toFixed(1)}년 · 시작 ${won(b.v0,true)} · 월 ${monthly}만 · 비중 ${GOAL_KEYS.map(k=>+portfolio.targets[k]||0).join('/')}${isGoalW?' (10억 목표형)':''} · 절세 ${g.tax?won(b.tax,true)+'/년':'미반영'}</div>
+    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:6px;margin-top:10px">
+      <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">${amt}억 이상 확률</div><div class="mono" style="font-size:22px;font-weight:800;color:${pc(cur.p)}">${cur.p.toFixed(0)}%</div></div>
+      <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">보통(중앙)</div><div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${(cur.med/1e8).toFixed(2)}억</div></div>
+      <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">나쁜 경우(하위10%)</div><div class="mono" style="font-size:15px;font-weight:700;color:${T.text2}">${(cur.p10/1e8).toFixed(2)}억</div></div>
+    </div>
+    <div style="font-size:12px;color:${T.text2};margin-top:8px">확률 50%에 필요한 월 적립: <b class="mono" style="color:${T.teal}">${need==null?'2,000만 초과':need.toLocaleString('ko-KR')+'만원'}</b>${need!=null&&need>monthly?` <span style="color:${T.text3}">(지금보다 +${need-monthly}만)</span>`:''}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+      <tr><td style="padding:4px 0;color:${T.text3}">방법 (억원)</td><td style="padding:4px 0 4px 8px;color:${T.text3};text-align:right;white-space:nowrap">하위10%</td><td style="padding:4px 0 4px 8px;color:${T.text3};text-align:right">중앙</td><td style="padding:4px 0 4px 8px;color:${T.text3};text-align:right">확률</td></tr>
+      ${rows.map((x,i)=>`<tr style="border-top:1px solid ${T.border}">
+        <td style="padding:6px 0;color:${i?T.text2:T.text};${i?'':'font-weight:700'}">${esc(x.l)}</td>
+        <td class="mono" style="padding:6px 0 6px 8px;text-align:right;color:${T.text3};white-space:nowrap">${(x.r.p10/1e8).toFixed(1)}</td>
+        <td class="mono" style="padding:6px 0 6px 8px;text-align:right;color:${T.text};white-space:nowrap">${(x.r.med/1e8).toFixed(1)}</td>
+        <td class="mono" style="padding:6px 0 6px 8px;text-align:right;font-weight:700;color:${pc(x.r.p)};white-space:nowrap">${x.r.p.toFixed(0)}%${i?`<div style="font-size:10px;font-weight:400;color:${T.text3}">${x.r.p-cur.p>=0?'+':''}${(x.r.p-cur.p).toFixed(0)}%p</div>`:''}</td>
+      </tr>`).join('')}
+    </table>
+    ${isGoalW?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:8px;width:100%;padding:9px;background:${T.teal};color:#000;border-radius:10px;font-size:12px;font-weight:700">10억 목표형 비중(${FIXED_LABEL})으로 바꾸기</button>`}
+    <div style="font-size:11px;color:${T.text2};margin-top:10px;line-height:1.7;padding-top:8px;border-top:1px solid ${T.border}">
+      <b>우선순위</b> ① 월 적립 늘리기(가장 확실, 하방도 올라감) ② 기간 연장 ③ 절세: 연금저축 600 + IRP 300 = 연 900만 납입 → 세액공제 ${won(900e4*0.132,true)}~${won(900e4*0.165,true)}(13.2%/16.5%, 총급여 5,500만 이하 16.5%), 환급금은 다시 투자 ④ 스위칭 탭 스타일 신호 지키기 ⑤ 비중(코인 20% 상한 유지)<br>
+      <span style="color:${T.amber}">📌 ISA 만기 자금을 60일 안에 연금계좌로 옮기면 옮긴 금액의 10%(최대 300만) 추가 공제</span>
+    </div>
+    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">몬테카를로 ${GOAL_N.toLocaleString()}경로(2014-10~2026-09 원화 월수익률 12개월 블록), 기대수익 연 국내 7 · 해외 8 · 채권 3.5 · 금 5 · 코인 15%, 세금·인플레이션 제외. 코인 기대수익 0%면 지금 설정 확률 ${c0.p.toFixed(0)}%. 근거 <span class="mono">analysis/goal_sim</span>. 투자 참고용 추정치이며, 공제 한도·공제율은 소득 구간에 따라 확인하세요.</div>`;
+}
+// 카드 계산(경로 수천 개)은 화면을 먼저 그린 뒤 채움 — 같은 입력이면 캐시된 HTML 재사용
+let _goalHtml=null;
+function goalKey(){return JSON.stringify([goalBase(),goalCfg(),T.text]);}
+function goalCardCached(){const k=goalKey();if(!_goalHtml||_goalHtml.k!==k)_goalHtml={k,h:goalCardHtml()};return _goalHtml.h;}
+function goalCard(){
+  const ready=_goalHtml&&_goalHtml.k===goalKey();
+  if(!ready)setTimeout(renderGoalCard,30);
+  return `<div id="goalCard" style="background:${T.card};border-radius:14px;padding:14px 16px;border:1px solid ${T.teal}44;margin-bottom:8px">${ready?_goalHtml.h:`<div style="font-size:13px;color:${T.text3}">🎯 목표 확률 계산 중…</div>`}</div>`;
+}
+function renderGoalCard(){const el=document.getElementById('goalCard');if(el)el.innerHTML=goalCardCached();}
+function showGoalModal(){
+  const g=goalCfg();
+  const fld=(id,lab,v,ex='')=>`<div style="margin-bottom:10px"><div style="font-size:12px;color:${T.text3};margin-bottom:4px">${lab}</div><input id="${id}" value="${esc(v)}" ${ex} style="font-size:15px;font-family:monospace"></div>`;
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:12px">🎯 목표 설정</div>
+    ${fld('gAmt','목표 금액 (억원)',g.amt,'type="number" min="1" step="0.5"')}
+    ${fld('gEnd','목표 시점 (YYYY-MM)',g.end,'type="month"')}
+    <div onclick="document.getElementById('gTax').checked=!document.getElementById('gTax').checked" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:${T.text}"><input type="checkbox" id="gTax" ${g.tax?'checked':''} onclick="event.stopPropagation()" style="width:18px;height:18px">연금저축·IRP 세액공제 환급금 재투자 반영</div>
+    ${fld('gPen','연금저축·IRP 연 납입 (만원, 공제 한도 900)',g.pension,'type="number" min="0" max="900" step="50"')}
+    <div style="margin-bottom:14px"><div style="font-size:12px;color:${T.text3};margin-bottom:4px">세액공제율</div>
+      <select id="gRate" style="font-size:14px"><option value="16.5" ${+g.rate===16.5?'selected':''}>16.5% (총급여 5,500만원 이하)</option><option value="13.2" ${+g.rate!==16.5?'selected':''}>13.2% (그 외)</option></select></div>
+    <div style="display:flex;gap:8px">
+      <button onclick="saveGoal()" class="tap" style="flex:1;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">저장</button>
+      <button onclick="closeModal()" class="tap" style="padding:13px 16px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:13px">취소</button>
+    </div>`);
+}
+function saveGoal(){
+  const amt=parseFloat(document.getElementById('gAmt')?.value),end=String(document.getElementById('gEnd')?.value||''),pen=parseFloat(document.getElementById('gPen')?.value);
+  if(!(amt>0)){alert('목표 금액을 입력하세요.');return;}
+  if(!/^\d{4}-\d{2}$/.test(end)){alert('목표 시점을 YYYY-MM 형식으로 입력하세요.');return;}
+  portfolio.goal={amt,end,tax:!!document.getElementById('gTax')?.checked,pension:isNaN(pen)?0:Math.min(900,Math.max(0,pen)),rate:parseFloat(document.getElementById('gRate')?.value)||13.2};
+  save();closeModal();render();
 }
 
 // ── 분류 자동 판정 ──
@@ -1606,14 +1767,24 @@ function fixedTargetCard(){
   const t=portfolio.targets;
   const rows=[['kr','국내주식',T.teal],['us','해외주식',T.blue],['bonds','채권',T.green],['gold','금·광물',T.amber],['crypto','코인',T.purple]];
   const same=rows.every(([key])=>(t[key]||0)===FIXED_TARGETS[key]);
+  const g=goalCfg(),b=goalBase(),r0=goalEval(b),r1=goalEval(Object.assign({},b,{krx:GOAL_KRX}));
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.teal}44;margin-bottom:14px;padding:12px 16px">
-    <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 고정 목표 비중 운영</div>
-    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱<br>백테스트상 신호별 비중 변경은 고정 비중 대비 우위가 없어, 위 신호는 참고용입니다.</div>
-    ${same?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:10px;width:100%;padding:10px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">고정 비중으로 복원하고 리밸런싱으로 이동</button>`}
+    <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 10억 목표형 고정 비중 운영</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱<br>자산군 비중은 신호와 무관하게 고정합니다(신호별 비중 변경은 백테스트상 우위 없음). 신호는 아래 <b>주식 내부 스타일</b>에만 씁니다.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+      <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">${g.amt}억 확률 · 지금 설정</div><div class="mono" style="font-size:18px;font-weight:800;color:${T.text}">${r0.p.toFixed(0)}%</div></div>
+      <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">스위칭 신호 준수 시</div><div class="mono" style="font-size:18px;font-weight:800;color:${T.teal}">${r1.p.toFixed(0)}% <span style="font-size:11px;font-weight:400;color:${T.text3}">${r1.p-r0.p>=0?'+':''}${(r1.p-r0.p).toFixed(0)}%p</span></div></div>
+    </div>
+    <div style="font-size:10px;color:${T.text3};margin-top:4px;line-height:1.5">'신호 준수'는 스타일 목표를 지켜 국내주식이 연 +${GOAL_KRX}%p 더 번다고 가정한 값입니다(백테스트 개선폭은 Sharpe +0.02~0.03으로 이보다 작을 수 있음). 자세한 레버는 리밸런싱 탭 🎯 카드.</div>
+    ${same?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:10px;width:100%;padding:10px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">10억 목표형 비중으로 바꾸고 리밸런싱으로 이동</button>`}
   </div>`;
 }
 function applyFixedTargets(){
   portfolio.targets=Object.assign({},FIXED_TARGETS);
+  save();tab='rebal';render();
+}
+function applyStableTargets(){
+  portfolio.targets=Object.assign({},STABLE_TARGETS);
   save();tab='rebal';render();
 }
 
@@ -1828,6 +1999,7 @@ function rebalScreen(){
     <div style="display:flex;justify-content:space-between;font-size:11px;color:${T.text3};margin-top:8px">
       <span>50만</span><span>200만</span><span>350만</span><span>500만</span>
     </div>`)}
+    ${goalCard()}
     <div id="targetMonths" style="background:${T.card};border-radius:14px;padding:16px;border:1px solid ${T.teal}44;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
@@ -1845,8 +2017,11 @@ function rebalScreen(){
 
     ${secL('목표 비중 설정')}
     <div style="background:${T.teal}0F;border:1px solid ${T.teal}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
-      고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)
-      <button onclick="applyFixedTargets()" class="tap" style="margin-top:8px;width:100%;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">고정 비중으로 복원</button>
+      🎯 10억 목표형 고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">하락장 방어를 원하면 안정형(${STABLE_LABEL}, 과거 MDD −17.6% vs −21.9%)을 쓰세요.</span>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="applyFixedTargets()" class="tap" style="flex:1;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">10억 목표형으로</button>
+        <button onclick="applyStableTargets()" class="tap" style="flex:1;padding:8px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:12px">안정형으로</button>
+      </div>
     </div>
     ${card(`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px">
       ${rows.map((r,i)=>`<div style="text-align:center"><div style="font-size:10px;color:${r.color};font-weight:700;margin-bottom:3px;height:24px;line-height:12px">${r.name.replace(/^[^\u3131-\uD79D]+/,'')}</div><input type="number" id="tIn${i}" value="${r.tgt}" min="0" max="100" step="1" style="padding:7px 2px;text-align:center;font-size:13px"></div>`).join('')}
@@ -2617,7 +2792,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.3</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.4</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
