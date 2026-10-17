@@ -218,12 +218,13 @@ const kiwoomBalance=mock=>kiwoomCall('balance',mock);
 // v5.5: 사용자 선택으로 금 30→25, 코인 10→15 (analysis/rebal_cycle/gold_crypto.py — 2014-10~ 반기+±25% 기준
 //       Sharpe 1.43→1.38, MDD −13.1→−17.6%, 코인 위험기여 42→61%. 코인 기대수익이 낮아지면 격차 확대)
 // 리밸런싱 주기는 반기(6·12월) 정기 + 목표 금액 ±25% 수시 (analysis/rebal_cycle, 아래 REBAL_MONTHS·REBAL_REL).
-// v6.4: 사용자 요청으로 '10억 도달 확률 최대' 비중을 20/30/10/25/15 → 30/25/0/25/20으로 변경 (analysis/goal_sim — 몬테카를로 4,000경로,
-//       코인 상한 20% 안에서 1,300조합 탐색. 10년·월 250만 기준 P(≥10억) 7.8→22.1%, 하위10%는 4.06→4.03억으로 거의 같음,
-//       2014-10~ 과거 MDD −17.6→−21.8%). 상위권(35/20·35/25·30/30, 코인 20·채권 0)과 오차 내 동률이라 과거 MDD가 가장 작은 안 선택.
+// v6.4: 사용자 요청으로 '10억 도달 확률 최대' 비중을 20/30/10/25/15 → 30/20/5/25/20으로 변경 (analysis/goal_sim — 몬테카를로 4,000경로,
+//       코인 상한 20% 안에서 1,300조합 탐색. 상위권은 코인 20·채권 0(30/25/0/25/20 등)이었으나 사용자 선택으로 채권 5% 유지,
+//       해외에서 5%p를 옮김. 10년·월 250만 기준 P(≥10억) 7.8→21.0%(채권 0%안 22.1%, 오차 내), 하위10%는 4.06→4.04억으로 거의 같음,
+//       2014-10~ 과거 MDD −17.6→−21.9%).
 //       이전 고정 비중은 STABLE_TARGETS(안정형)로 남겨 리밸런싱 탭에서 되돌릴 수 있음.
-const FIXED_TARGETS={kr:30,us:25,bonds:0,gold:25,crypto:20};
-const FIXED_LABEL='국내 30 · 해외 25 · 채권 0 · 금 25 · 코인 20%';
+const FIXED_TARGETS={kr:30,us:20,bonds:5,gold:25,crypto:20};
+const FIXED_LABEL='국내 30 · 해외 20 · 채권 5 · 금 25 · 코인 20%';
 const STABLE_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
 const STABLE_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
 
@@ -280,7 +281,7 @@ const OVERSEAS_WATCHLIST_SEED=[
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
-  targets:{kr:30,us:25,bonds:0,gold:25,crypto:20},
+  targets:{kr:30,us:20,bonds:5,gold:25,crypto:20},
   holdings:{
     kr_stocks:[
       {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['성장주','소형주'],eps:1782,indPer:50},
@@ -2016,7 +2017,7 @@ function rebalScreen(){
 
     ${secL('목표 비중 설정')}
     <div style="background:${T.teal}0F;border:1px solid ${T.teal}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
-      🎯 10억 목표형 고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">채권 0%라 보유 채권은 초과(매도 대상)로 잡힙니다. 하락장 방어를 원하면 안정형(${STABLE_LABEL}, 과거 MDD −17.6% vs −21.8%)을 쓰세요.</span>
+      🎯 10억 목표형 고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">하락장 방어를 원하면 안정형(${STABLE_LABEL}, 과거 MDD −17.6% vs −21.9%)을 쓰세요.</span>
       <div style="display:flex;gap:6px;margin-top:8px">
         <button onclick="applyFixedTargets()" class="tap" style="flex:1;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">10억 목표형으로</button>
         <button onclick="applyStableTargets()" class="tap" style="flex:1;padding:8px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:12px">안정형으로</button>
