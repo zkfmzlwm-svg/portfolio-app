@@ -43,7 +43,7 @@ run("portfolio.switching.retail=[{ym:'2026-01',val:1},{ym:'2026-02',val:2},{ym:'
 run("portfolio.switching.ism=[{ym:'2026-01',val:50},{ym:'2026-02',val:60},{ym:'2026-03',val:70},{ym:'2026-04',val:80},{ym:'2026-05',val:90}];");
 ok(run('overallSignal().s')==='bull','bull 강제 성공: '+run('overallSignal().s'));
 run('applyFixedTargets()');
-ok(run('portfolio.targets.us')===30&&run('portfolio.targets.bonds')===10&&run('portfolio.targets.gold')===25&&run('portfolio.targets.crypto')===15,'강세 신호에서도 고정비중 20/30/10/25/15');
+ok(run('portfolio.targets.kr')===30&&run('portfolio.targets.us')===20&&run('portfolio.targets.bonds')===5&&run('portfolio.targets.gold')===25&&run('portfolio.targets.crypto')===20,'강세 신호에서도 고정비중 30/20/5/25/20');
 p=run('newMoneyPlan(2000000)');
 sum=p.allocs.reduce((s,a)=>s+a.amt,0);
 ok(Math.abs(sum-2000000)<2,'고정비중에서 월 200만 전액 배분: '+sum);
