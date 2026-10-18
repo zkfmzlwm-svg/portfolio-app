@@ -1,6 +1,6 @@
 """10억 목표 도달 확률 — 몬테카를로 (12개월 블록 부트스트랩)
    변동성·상관·꼬리는 2014-10~2026-09 원화 월수익률(../regime_weights)에서, 평균은 아래 기대수익 가정으로 재중심화.
-   앱 운영 규칙 그대로: 매월 적립금은 부족 자산군에만(부족액 비례), 6·12월 정기 + 목표 금액 ±25% 수시 리밸런싱, 비용 0.3%."""
+   앱 운영 규칙 그대로: 매월 적립금은 부족 자산군에만(부족액 비례), 6·12월 반기 리밸런싱(v6.5부터 수시 없음 — REL), 비용 0.3%."""
 import os, sys, itertools
 import numpy as np, pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'regime_weights'))
@@ -22,7 +22,9 @@ def paths(n, months, seed=7, blk=12):
         idx[i] = s[:months]
     return idx
 
-def run(W, idx, mu, monthly=250e4, v0=V0, tax=0.0, krx=0.0, months0=10, cost=.003, rel=.25):
+REL = float(os.environ['REL']) if os.environ.get('REL') else None   # 수시 기준(목표 금액 대비, 0.25=±25%). v6.4 분석은 0.25, v6.5 앱은 없음
+
+def run(W, idx, mu, monthly=250e4, v0=V0, tax=0.0, krx=0.0, months0=10, cost=.003, rel=REL):
     """W: (k,5) 목표비중, idx: (n,M) 부트스트랩 인덱스 → 최종자산 (k,n)
        tax: 연 세액공제 환급액(원) — 매년 12월 적립에 더함, krx: 국내주식 연 초과수익(스위칭 성공 가정, 소수)"""
     W = np.asarray(W, float); W = W / W.sum(1, keepdims=True); k = len(W); n, M = idx.shape
@@ -39,7 +41,8 @@ def run(W, idx, mu, monthly=250e4, v0=V0, tax=0.0, krx=0.0, months0=10, cost=.00
         left = c - add.sum(2, keepdims=True); h = h + W[:, None, :] * np.maximum(left, 0)
         mon = (m0 + t) % 12 + 1
         S = h.sum(2, keepdims=True); cur = h / S
-        hit = (np.abs(cur / np.maximum(W[:, None, :], 1e-9) - 1) * (W[:, None, :] > 0) > rel).any(2, keepdims=True)
+        hit = (np.abs(cur / np.maximum(W[:, None, :], 1e-9) - 1) * (W[:, None, :] > 0) > rel).any(2, keepdims=True) if rel is not None \
+            else np.zeros(S.shape, bool)
         if mon in (6, 12): hit[:] = True
         tv = np.abs(cur - W[:, None, :]).sum(2, keepdims=True) / 2 * S
         h = np.where(hit, W[:, None, :] * (S - tv * cost), h)
