@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.4</title>
+<title>포트폴리오 v6.5</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -217,7 +217,7 @@ const kiwoomBalance=mock=>kiwoomCall('balance',mock);
 // 백테스트 추천안 20/30/10/30/10: 전체기간 Sharpe 1.08 / MDD −13.2% (기존 25/25/20/20/10: 1.04 / −15.2%). 월 적립금 부족분 배분 권장.
 // v5.5: 사용자 선택으로 금 30→25, 코인 10→15 (analysis/rebal_cycle/gold_crypto.py — 2014-10~ 반기+±25% 기준
 //       Sharpe 1.43→1.38, MDD −13.1→−17.6%, 코인 위험기여 42→61%. 코인 기대수익이 낮아지면 격차 확대)
-// 리밸런싱 주기는 반기(6·12월) 정기 + 목표 금액 ±25% 수시 (analysis/rebal_cycle, 아래 REBAL_MONTHS·REBAL_REL).
+// 리밸런싱 주기는 반기(6·12월) 1회, 수시 없음 (v6.5, analysis/rebal_cycle/timing.py, 아래 REBAL_MONTHS).
 // v6.4: 사용자 요청으로 '10억 도달 확률 최대' 비중을 20/30/10/25/15 → 30/20/5/25/20으로 변경 (analysis/goal_sim — 몬테카를로 4,000경로,
 //       코인 상한 20% 안에서 1,300조합 탐색. 상위권은 코인 20·채권 0(30/25/0/25/20 등)이었으나 사용자 선택으로 채권 5% 유지,
 //       해외에서 5%p를 옮김. 10년·월 250만 기준 P(≥10억) 7.8→21.0%(채권 0%안 22.1%, 오차 내), 하위10%는 4.06→4.04억으로 거의 같음,
@@ -917,13 +917,18 @@ function newMoneyPlan(monthlyWon){
 // 근거: analysis/rebal_cycle (2003-01~2026-09, 비용 0.3%)
 //  자산군: 반기 단독 Sharpe 1.105·MDD −15.3%(코인 이탈 최대 +26.8%p) → 월말 목표 금액 ±25% 초과 시 수시 추가로 1.087·−13.1%
 //         (±5%p 기준 1.106·−13.1%, 분기 1.115·−13.3%). 알림은 6·12월 정기만, 수시 기준 초과는 리밸런싱 탭에 참고 표시
+// v6.5: 10억 목표형(30/20/5/25/20)으로 실행 시점 4안 재검토(analysis/rebal_cycle/timing.py) → 반기 1회 단독을 메인으로, 수시 없음.
+//  몬테카를로 10년·월 250만 P(≥10억): 반기 28.1% · 분기 23.6% · 수시 ±5%p 21.4% · 수시 목표 금액 ±5% 18.6% · (기존) 반기+±25% 21.0%
+//  — 블록 길이 1·6·12·24개월 모두 반기가 1위. 과거(2003~) CAGR 21.0 vs 20.3 vs 19.3 vs 18.8%, 연 2회로 매매·세금 최소.
+//  대가: 과거 MDD −25.7%(분기 −22.3, 수시 −22.4). 몬테카를로 경로별 MDD 중앙값 차이는 1%p 이내(−30.5 vs −29.4%).
 //  주식 내부: 6·12월 전 종목 동일비중 복원은 상폐 위험(연 2~3%) 반영 시 이득 소멸(하락주 물타기) →
 //            동일비중 2배(2/N) 초과분만 줄이는 상한 트림이 국내·미국·FF 49산업 모두 Sharpe 우위(65~96%), 회전율 1/4~1/8
-const REBAL_MONTHS=[6,12],REBAL_REL=25,TRIM_MULT=2,TRIM_MIN_N=3;   // REBAL_REL: 수시 기준 — 자산군 금액이 목표 금액 대비 ±25% (100만원 → 125만원·75만원)
+const REBAL_MONTHS=[6,12],REBAL_REL=null,TRIM_MULT=2,TRIM_MIN_N=3;   // REBAL_REL: 수시 기준(목표 금액 대비 %) — v6.5부터 null(수시 없음, 반기 1회만)
 const localYmd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function bandBreaches(rows){
   rows=rows||rebalRows();
   if(!(rows.reduce((s,r)=>s+r.ev,0)>0))return[];
+  if(REBAL_REL==null)return[];
   return rows.filter(r=>r.tval>0&&Math.abs(relDev(r))>REBAL_REL);
 }
 function relDev(r){return r.tval>0?(r.ev/r.tval-1)*100:0;}   // 목표 금액 대비 %
@@ -939,7 +944,7 @@ function rebalSchedule(now){
 }
 function rebalStatus(){
   const rows=rebalRows(),br=bandBreaches(rows),sc=rebalSchedule();
-  // 알림(홈 배너·강조)은 6·12월 정기만. 수시 기준 초과(br)는 리밸런싱 탭에 참고로만 표시
+  // 알림(홈 배너·강조)은 6·12월 정기만. v6.5부터 수시 없음(REBAL_REL=null → br은 항상 빈 배열)
   return{rows,br,sc,level:sc.due?'due':'ok'};
 }
 function markRebalDone(){portfolio.lastRebal=localYmd(new Date());save();render();}
@@ -972,7 +977,7 @@ function trimPlan(key){
 
 // ── 🎯 10억 목표 시뮬레이션 (v6.4) — 근거 analysis/goal_sim (sim.py·pick.py) ──
 // 몬테카를로: 2014-10~2026-09 원화 월수익률(국내/해외/채권/금/코인, 평균 제거 로그수익률 ×1e4)을 12개월 블록으로 이어 붙이고
-// 평균은 아래 기대수익 가정으로 재중심화. 앱 규칙 그대로 매월 적립금은 부족 자산군에만, 6·12월 정기 + 목표 금액 ±25% 수시, 비용 0.3%.
+// 평균은 아래 기대수익 가정으로 재중심화. 앱 규칙 그대로 매월 적립금은 부족 자산군에만, 6·12월 정기(REBAL_REL이 있으면 수시 포함), 비용 0.3%.
 // 기대수익(연 기하, 원화 %)은 과거(11/15/3/13/65%)를 그대로 쓰면 낙관적이라 낮춘 값. 코인은 0%로 둔 비관 가정도 함께 표시.
 const GOAL_MU=[7,8,3.5,5,15],GOAL_MU_COIN0=[7,8,3.5,5,0],GOAL_KRX=3,GOAL_N=1000;
 const GOAL_L=(()=>{const a='10,287,300,-237,-1588,-407,508,459,207,1048,102,-337,-206,-163,-2273,113,-298,517,855,-4166,202,394,-310,-742,1111,340,-214,123,-254,-758,-131,-305,-373,-401,-1039,-266,330,254,277,-353,-287,-277,-143,-205,964,-518,476,497,-414,741,37,-553,177,458,-2354,261,-360,148,-265,-144,-259,317,-470,-254,2059,-227,-5,9,-722,1490,-326,-122,100,26,1072,-48,-287,644,769,-1626,332,101,350,1166,1523,-81,-304,-868,-1021,-1746,-126,-34,4,443,357,-138,434,349,-349,1665,157,-382,-20,461,1651,19,-125,-366,-268,-1534,-28,-80,-100,-404,-1212,-247,-282,-165,-195,-4,-196,128,246,23,1397,142,505,-195,-710,462,128,315,196,-60,2380,43,-386,-448,-17,-795,250,71,-150,17,1340,134,-211,-122,-248,-1485,550,152,257,244,2046,115,-134,-98,-267,4711,-27,158,136,-105,610,-238,-109,-182,-65,863,59,-86,123,315,4506,451,258,7,-265,-1048,-260,-125,-283,-414,3336,-108,-99,-335,-346,3887,320,-160,-169,-54,2664,-629,437,-235,226,-3668,3,-362,8,-182,-120,207,-595,-109,-235,-4612,-446,8,-79,-121,2471,-480,229,181,-112,-2406,-206,221,277,-186,-1708,47,253,-71,-319,1536,14,228,108,-283,-1389,-1506,-121,-208,-227,-1083,253,-560,219,385,-620,-342,-132,-90,-263,-5143,698,-1093,199,330,-1179,-115,641,30,175,-1221,-325,314,36,-47,782,217,163,339,-159,313,-834,531,172,83,2480,353,-563,490,289,4512,-582,247,-212,363,1598,-356,272,219,141,-879,400,-50,600,900,-642,26,-55,-274,-575,-2042,-51,-127,-234,-74,391,439,340,9,-323,-2266,-436,-55,-341,37,-1150,-715,182,620,645,2508,-1314,-748,462,32,-1060,969,-1420,372,-90,-3281,340,952,-122,477,2419,308,614,274,423,735,574,-240,-318,-127,-1063,263,387,-7,859,1659,-65,511,-167,-177,-153,-336,-684,-176,-710,-1401,1262,-650,-443,-431,1754,960,661,-244,-908,2864,278,65,-230,398,3306,50,71,156,-136,1199,87,199,-221,-702,2723,-82,310,359,337,1491,-488,230,-10,-52,886,-397,-380,29,-212,-945,-525,484,-145,-28,2873,404,-94,188,-64,-1043,-1186,342,-69,234,-2489,61,-509,-88,-118,-2118,142,-456,-94,456,698,-302,326,-364,103,186,-106,-679,-99,49,-1945,-1480,-249,-117,-584,-2280,424,-491,376,231,-4673,11,762,267,-362,1233,-1441,-236,-119,-99,-1638,548,-418,160,278,-61,678,612,-222,-330,64,-1075,-365,-458,-72,-2977,736,-1153,-616,-252,-1228,-123,264,99,233,2707,189,342,358,64,300,27,95,189,512,1504,225,301,317,247,116,-122,-178,-275,-340,-1249,190,457,-204,-376,660,-366,-137,-431,-214,-1177,-435,91,275,145,-1243,-860,-415,-155,-398,163,996,-315,-197,634,2116,389,292,-44,-313,-40,-686,335,352,35,728,492,373,316,91,-10,314,399,-227,-45,3217,-273,283,128,812,1194,-281,-276,-89,449,-1789,521,399,178,85,677,-170,163,30,-178,-1224,-426,-52,206,369,-167,-380,-135,-139,-140,-1580,-216,-71,-48,237,135,-472,256,94,786,1078,-304,600,215,-278,2895,406,200,308,320,-175,-11,-18,-129,392,334,-278,-212,285,115,-2321,227,-588,113,907,-533,464,-543,-258,91,565,1224,173,-468,-424,313,477,180,-69,-262,-386,-257,419,225,148,665,649,37,91,340,-1138,1743,337,145,1117,211,-522,284,212,417,-654,633,171,343,694,-2071,2073,-270,-261,-44,-903,1708,27,-49,1057,-1491,-2187,-239,185,703,-2052,2594,-61,304,-707,328,2428,576,-345,-560,395,-72,568,146,-82,-609,-2577,71,292,-1050,-2409,262,-866,-917,-766,-469,-46,-344,-504,357,1327,-1946,-243,-458,-890,108'.split(',').map(Number),o=[];for(let i=0;i<a.length;i+=5)o.push(a.slice(i,i+5).map(v=>v/1e4));return o;})();
@@ -995,7 +1000,7 @@ function goalRun(o){
   const n=o.n||GOAL_N,M=o.months,idx=goalPaths(n,Math.max(M,goalMonthsLeft()+24)),mu=o.mu||GOAL_MU;
   const sw=GOAL_KEYS.reduce((s,k)=>s+(+o.W[k]||0),0)||1,W=GOAL_KEYS.map(k=>(+o.W[k]||0)/sw);
   const eg=mu.map((x,j)=>(1+x/100)**(1/12)*(j===0?(1+(o.krx||0)/100)**(1/12):1));
-  const E=goalExp(),m0=new Date().getMonth()+1,out=new Float64Array(n),rel=REBAL_REL/100,v0=o.v0,goal=o.goal;
+  const E=goalExp(),m0=new Date().getMonth()+1,out=new Float64Array(n),rel=REBAL_REL==null?Infinity:REBAL_REL/100,v0=o.v0,goal=o.goal;
   const w0=W[0],w1=W[1],w2=W[2],w3=W[3],w4=W[4],g0=eg[0],g1=eg[1],g2=eg[2],g3=eg[3],g4=eg[4];
   const mons=new Int8Array(M),cs=new Float64Array(M);
   for(let t=0;t<M;t++){mons[t]=(m0+t)%12+1;cs[t]=o.monthly+(mons[t]===12?(o.tax||0):0);}
@@ -1770,7 +1775,7 @@ function fixedTargetCard(){
   const g=goalCfg(),b=goalBase(),r0=goalEval(b),r1=goalEval(Object.assign({},b,{krx:GOAL_KRX}));
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.teal}44;margin-bottom:14px;padding:12px 16px">
     <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 10억 목표형 고정 비중 운영</div>
-    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱<br>자산군 비중은 신호와 무관하게 고정합니다(신호별 비중 변경은 백테스트상 우위 없음). 신호는 아래 <b>주식 내부 스타일</b>에만 씁니다.</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 리밸런싱은 반기(6·12월 말) 1회<br>자산군 비중은 신호와 무관하게 고정합니다(신호별 비중 변경은 백테스트상 우위 없음). 신호는 아래 <b>주식 내부 스타일</b>에만 씁니다.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
       <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">${g.amt}억 확률 · 지금 설정</div><div class="mono" style="font-size:18px;font-weight:800;color:${T.text}">${r0.p.toFixed(0)}%</div></div>
       <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">스위칭 신호 준수 시</div><div class="mono" style="font-size:18px;font-weight:800;color:${T.teal}">${r1.p.toFixed(0)}% <span style="font-size:11px;font-weight:400;color:${T.text3}">${r1.p-r0.p>=0?'+':''}${(r1.p-r0.p).toFixed(0)}%p</span></div></div>
@@ -2017,7 +2022,7 @@ function rebalScreen(){
 
     ${secL('목표 비중 설정')}
     <div style="background:${T.teal}0F;border:1px solid ${T.teal}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
-      🎯 10억 목표형 고정 비중: ${FIXED_LABEL} · <b>반기(6·12월) 정기 + 목표 금액 ±${REBAL_REL}% 수시 리밸런싱</b> (매월 적립금은 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">하락장 방어를 원하면 안정형(${STABLE_LABEL}, 과거 MDD −17.6% vs −21.9%)을 쓰세요.</span>
+      🎯 10억 목표형 고정 비중: ${FIXED_LABEL} · <b>반기(6·12월 말) 1회 리밸런싱, 수시 없음</b> (그 사이엔 매월 적립금을 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">하락장 방어를 원하면 안정형(${STABLE_LABEL}, 과거 MDD −17.6% vs −21.9%)을 쓰세요.</span>
       <div style="display:flex;gap:6px;margin-top:8px">
         <button onclick="applyFixedTargets()" class="tap" style="flex:1;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">10억 목표형으로</button>
         <button onclick="applyStableTargets()" class="tap" style="flex:1;padding:8px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:12px">안정형으로</button>
@@ -2031,7 +2036,7 @@ function rebalScreen(){
       <button onclick="saveTargets()" class="tap" style="padding:8px 16px;background:${T.teal};color:#000;border-radius:8px;font-size:12px;font-weight:700">목표 저장</button>
     </div>`)}
 
-    ${secL('자산군 리밸런싱 (6·12월 정기 · 목표 금액 ±'+REBAL_REL+'% 수시)')}
+    ${secL('자산군 리밸런싱 (6·12월 말 반기 1회)')}
     <div id="rebNow">${renderRebNow(rows,st)}</div>
 
     ${secL('주식 종목 상한 트림 (6·12월 · 동일비중 2배 초과분만)')}
@@ -2060,7 +2065,6 @@ function renderRebNow(rows,st){
   }
   st=st||rebalStatus();
   const when=st.level==='due'?`<span style="color:${T.amber};font-weight:700">이번 달(${st.sc.nm}월) 정기 리밸런싱 때 실행</span>`
-    :st.br.length?`<span style="color:${T.text2}">수시 기준(목표 금액 ±${REBAL_REL}%)을 넘은 자산군이 있습니다 — 필요하면 지금 실행</span>`
     :`<span style="color:${T.text3}">지금은 실행 시점 아님 (다음 ${st.sc.nextLabel}) — 아래 금액은 참고용, 그 전까지는 월 적립금으로 맞춤</span>`;
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.border};overflow:hidden;margin-bottom:8px">
     <div style="padding:9px 12px;font-size:11px;line-height:1.5;border-bottom:1px solid ${T.border}">${when}</div>
@@ -2076,26 +2080,27 @@ function renderRebNow(rows,st){
   </div>`;
 }
 
-// 홈: 6·12월 정기 리밸런싱 달에 아직 완료 기록이 없을 때만 표시 (수시 기준 초과는 알림 없음)
+// 홈: 6·12월 정기 리밸런싱 달에 아직 완료 기록이 없을 때만 표시
 function homeRebalBanner(){
   const st=rebalStatus();if(st.level!=='due')return '';
   return `<div onclick="tab='rebal';render()" class="tap" style="background:${T.amber}0F;border:1px solid ${T.amber}44;border-radius:14px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px">
     <span style="font-size:13px;font-weight:700;color:${T.amber};line-height:1.4">📅 이번 달(${st.sc.nm}월) 정기 리밸런싱 차례</span><span style="color:${T.amber}">›</span>
   </div>`;
 }
-// 📅 정기(6·12월) 리밸런싱 일정 카드 — 수시 기준(목표 금액 ±25%) 초과는 알림 없이 참고 한 줄로만 표시
+// 📅 정기(6·12월) 리밸런싱 일정 카드 — v6.5부터 수시 없음. 목표 대비 이탈은 참고로만 표시(그 사이엔 월 적립금으로 맞춤)
 function rebalScheduleCard(st){
   st=st||rebalStatus();const sc=st.sc,due=st.level==='due',col=due?T.amber:T.teal;
   const title=due?`📅 이번 달 정기 리밸런싱 (${sc.nm}월)`:`📅 다음 정기 리밸런싱 · ${sc.nextLabel}`;
   const nm=r=>r.name.replace(/^[^\u3131-\uD79D]+/,'');
-  const band=st.br.length
-    ?`수시 기준(목표 금액 ±${REBAL_REL}%) 넘은 자산군: ${st.br.map(r=>{const d=relDev(r);return `${nm(r)} <span class="mono">${d>0?'+':''}${d.toFixed(0)}%</span>`;}).join(' · ')}`
-    :`모든 자산군이 수시 기준(목표 금액 ±${REBAL_REL}%) 이내`;
+  const dv=st.rows.filter(r=>r.tval>0&&Math.abs(relDev(r))>=10).sort((a,b)=>Math.abs(relDev(b))-Math.abs(relDev(a)));
+  const band=dv.length
+    ?`목표 대비 이탈(참고): ${dv.map(r=>{const d=relDev(r);return `${nm(r)} <span class="mono">${d>0?'+':''}${d.toFixed(0)}%</span>`;}).join(' · ')}`
+    :`모든 자산군이 목표 금액 ±10% 이내`;
   return `<div style="background:${col}0F;border:1px solid ${col}44;border-radius:14px;padding:12px 16px;margin-bottom:8px">
     <div style="font-size:14px;font-weight:700;color:${col}">${title}</div>
     <div style="font-size:12px;color:${T.text2};margin-top:4px;line-height:1.5">${due?'이번 달 말까지 실행':'D-'+sc.dday}</div>
     <div style="font-size:12px;color:${T.text2};margin-top:2px;line-height:1.5">${band}</div>
-    <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">정기: <b>6·12월 말</b> 자산군 비중 맞춤 + 주식 종목 상한 트림 (6·12월에만 홈 알림)<br>수시: 자산군 금액이 목표 금액의 <b>±${REBAL_REL}%</b>를 넘으면(예: 목표 100만원 → 125만원·75만원) 직접 판단해 실행 · 알림 없음<br>12월은 결제일 기준 연내 반영되도록 하순 초에 실행 · 해외주식 손실 종목을 함께 팔면 같은 해 이익과 통산</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">메인 전략: <b>6·12월 말 반기 1회</b> 자산군 비중 맞춤 + 주식 종목 상한 트림 (6·12월에만 홈 알림)<br><b>수시 리밸런싱 없음</b> — 이탈이 커도 반기까지 두고, 그 사이엔 월 적립금을 부족 자산군에만 넣습니다. 10억 확률이 분기·수시보다 높았습니다(28 vs 24·21%, 근거 <span class="mono">analysis/rebal_cycle/timing.py</span>). 대신 과거 최대 낙폭은 더 깊었습니다(−25.7 vs −22.3%).<br>12월은 결제일 기준 연내 반영되도록 하순 초에 실행 · 해외주식 손실 종목을 함께 팔면 같은 해 이익과 통산</div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px">
       <span style="font-size:11px;color:${T.text3}">마지막 기록: <span class="mono" style="color:${T.text2}">${sc.last||'없음'}</span></span>
       <button onclick="markRebalDone()" class="tap" style="padding:7px 12px;background:${col};color:#000;border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap">✓ 오늘 완료 기록</button>
@@ -2792,7 +2797,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.4</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.5</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 

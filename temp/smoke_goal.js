@@ -21,21 +21,21 @@ let pass=0,fail=0;
 const ok=(cond,msg)=>{if(cond){pass++;}else{fail++;console.log('✗ FAIL:',msg);}};
 
 
-// v6.4: 🎯 10억 목표 시뮬레이션 — Python(analysis/goal_sim/pick.py, V0=1억, 10년, 월 250만, 30/20/5/25/20, 4,000경로)과 대조
+// v6.4: 🎯 10억 목표 시뮬레이션 — Python(analysis/goal_sim/pick.py, V0=1억, 10년, 월 250만, 30/20/5/25/20, 반기 1회, 4,000경로)과 대조
 const W=run('FIXED_TARGETS');
 ok(run('GOAL_L.length')===140&&run('GOAL_L.every(r=>r.length===5)'),'월수익률 140×5');
 {const m=[0,1,2,3,4].map(j=>run(`GOAL_L.reduce((s,r)=>s+r[${j}],0)/GOAL_L.length`));ok(m.every(x=>Math.abs(x)<1e-3),'평균 제거됨 '+m.map(x=>x.toFixed(5)));}
 const base=o=>Object.assign({W,monthly:250e4,months:120,v0:1e8,tax:0,krx:0,goal:10e8},o||{});
 const r=run(`goalRun(${JSON.stringify(base())})`);
-ok(Math.abs(r.p-59.2)<4,'P(≥10억) ≈ 59% (Python 59.2), got '+r.p.toFixed(1));
-ok(Math.abs(r.med/1e8-11.29)<0.5,'중앙 ≈ 11.3억, got '+(r.med/1e8).toFixed(2));
-ok(Math.abs(r.p10/1e8-5.96)<0.4,'하위10% ≈ 6.0억, got '+(r.p10/1e8).toFixed(2));
+ok(Math.abs(r.p-64.0)<4,'P(≥10억) ≈ 64% (Python 64.0), got '+r.p.toFixed(1));
+ok(Math.abs(r.med/1e8-12.23)<0.6,'중앙 ≈ 12.2억, got '+(r.med/1e8).toFixed(2));
+ok(Math.abs(r.p10/1e8-6.13)<0.4,'하위10% ≈ 6.1억, got '+(r.p10/1e8).toFixed(2));
 const rs=run(`goalRun(${JSON.stringify(base({W:run('STABLE_TARGETS')}))})`);
-ok(Math.abs(rs.p-49.3)<4&&rs.p<r.p,'안정형 P ≈ 49% (Python 49.3) < 10억 목표형, got '+rs.p.toFixed(1));
+ok(Math.abs(rs.p-56.4)<4&&rs.p<r.p,'안정형 P ≈ 56% (Python 56.4) < 10억 목표형, got '+rs.p.toFixed(1));
 const r400=run(`goalRun(${JSON.stringify(base({monthly:400e4}))})`);
-ok(Math.abs(r400.p-81.9)<4,'월 400만 P ≈ 82%, got '+r400.p.toFixed(1));
+ok(Math.abs(r400.p-83.8)<4,'월 400만 P ≈ 84%, got '+r400.p.toFixed(1));
 const r0=run(`goalRun(${JSON.stringify(base({mu:[7,8,3.5,5,0]}))})`);
-ok(Math.abs(r0.p-41.8)<4,'코인 0% 가정 P ≈ 42%, got '+r0.p.toFixed(1));
+ok(Math.abs(r0.p-47.5)<4,'코인 0% 가정 P ≈ 48%, got '+r0.p.toFixed(1));
 const rk=run(`goalRun(${JSON.stringify(base({krx:3}))})`),rt=run(`goalRun(${JSON.stringify(base({tax:118.8e4}))})`);
 ok(rk.p>r.p&&rt.p>r.p&&rt.med>r.med,'스위칭·절세 레버는 확률↑');
 // 0원 시작·적립 0 → 0
