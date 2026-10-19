@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.5</title>
+<title>포트폴리오 v6.6</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -223,10 +223,16 @@ const kiwoomBalance=mock=>kiwoomCall('balance',mock);
 //       해외에서 5%p를 옮김. 10년·월 250만 기준 P(≥10억) 7.8→21.0%(채권 0%안 22.1%, 오차 내), 하위10%는 4.06→4.04억으로 거의 같음,
 //       2014-10~ 과거 MDD −17.6→−21.9%).
 //       이전 고정 비중은 STABLE_TARGETS(안정형)로 남겨 리밸런싱 탭에서 되돌릴 수 있음.
-const FIXED_TARGETS={kr:30,us:20,bonds:5,gold:25,crypto:20};
-const FIXED_LABEL='국내 30 · 해외 20 · 채권 5 · 금 25 · 코인 20%';
+// v6.6: 사용자 선택으로 기본 비중을 20/35/5/25/15로 변경. 반기 1회 기준 몬테카를로 10년·월 250만 P(≥10억)
+//       시작 1억 64.0→57.2%(시작 0원 근처 28.1→15.9%), 하위10% 6.13→6.17억, 과거(2003~) MDD −25.7→−21.0%, Sharpe 1.057→1.104.
+//       30/20/5/25/20은 GOALMAX_TARGETS(10억 확률형)로 남겨 버튼으로 고를 수 있음.
+const FIXED_TARGETS={kr:20,us:35,bonds:5,gold:25,crypto:15};
+const FIXED_LABEL='국내 20 · 해외 35 · 채권 5 · 금 25 · 코인 15%';
+const GOALMAX_TARGETS={kr:30,us:20,bonds:5,gold:25,crypto:20};
+const GOALMAX_LABEL='국내 30 · 해외 20 · 채권 5 · 금 25 · 코인 20%';
 const STABLE_TARGETS={kr:20,us:30,bonds:10,gold:25,crypto:15};
 const STABLE_LABEL='국내 20 · 해외 30 · 채권 10 · 금 25 · 코인 15%';
+const GOAL_KEYS_ALL=['kr','us','bonds','gold','crypto'];
 
 // ── 단타 탭 기본값 (v6.1) — 미국 밤사이 신호 → 국내 연계 종목. 근거: analysis/daytrade/us_signal.py (2014-07~2026-10) ──
 // · 미국 등락은 국내 시가 갭에 대부분 반영되고(상관 0.3~0.7), 장중에는 오히려 반대로 움직임(반도체 −0.03~−0.11)
@@ -281,7 +287,7 @@ const OVERSEAS_WATCHLIST_SEED=[
 // ── 초기 데이터 (2026-07-20 사진 기준) ──
 const INIT={
   exRate:1385,lastUpdated:'2026-08-28',
-  targets:{kr:30,us:20,bonds:5,gold:25,crypto:20},
+  targets:{kr:20,us:35,bonds:5,gold:25,crypto:15},
   holdings:{
     kr_stocks:[
       {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['성장주','소형주'],eps:1782,indPer:50},
@@ -729,7 +735,13 @@ function migratePortfolio(p){
     p.dt.sectorsV1=true;
   }
   // v6.4: 10억 목표형 고정 비중으로 1회 교체(사용자 요청) + 목표 설정(portfolio.goal) 기본값
-  if(!p.goalTargetsV1){p.targets=Object.assign({},FIXED_TARGETS);p.goalTargetsV1=true;}
+  if(!p.goalTargetsV1){p.targets=Object.assign({},FIXED_TARGETS);p.goalTargetsV1=true;p.goalTargetsV2=true;}
+  // v6.6: 기본 비중 20/35/5/25/15 — v6.4~6.5 기본값(30/20/5/25/20)을 그대로 쓰던 사용자만 1회 교체, 직접 바꾼 비중은 유지
+  if(!p.goalTargetsV2){
+    const t=p.targets||{};
+    if(GOAL_KEYS_ALL.every(k=>(+t[k]||0)===GOALMAX_TARGETS[k]))p.targets=Object.assign({},FIXED_TARGETS);
+    p.goalTargetsV2=true;
+  }
   if(!p.goal||typeof p.goal!=='object')p.goal=goalDefault();
   p.ver='6.1';
   return p;
@@ -1055,9 +1067,10 @@ function goalRows(){
   rows.push(['기간 +2년',Object.assign({},b,{months:b.months+24})]);
   rows.push(g.tax?['절세 재투자 없이',Object.assign({},b,{tax:0})]:[`절세 재투자 (연 ${won(rf,true)})`,Object.assign({},b,{tax:Math.round(rf)})]);
   rows.push([`스위칭 신호 준수 (국내 +${GOAL_KRX}%p 가정)`,Object.assign({},b,{krx:GOAL_KRX})]);
-  if(!same(FIXED_TARGETS))rows.push(['10억 목표형 비중 '+Object.values(FIXED_TARGETS).join('/'),Object.assign({},b,{W:Object.assign({},FIXED_TARGETS)})]);
+  if(!same(FIXED_TARGETS))rows.push(['기본 비중 '+Object.values(FIXED_TARGETS).join('/'),Object.assign({},b,{W:Object.assign({},FIXED_TARGETS)})]);
+  if(!same(GOALMAX_TARGETS))rows.push(['10억 확률형 비중 '+Object.values(GOALMAX_TARGETS).join('/'),Object.assign({},b,{W:Object.assign({},GOALMAX_TARGETS)})]);
   if(!same(STABLE_TARGETS))rows.push(['안정형 비중 '+Object.values(STABLE_TARGETS).join('/'),Object.assign({},b,{W:Object.assign({},STABLE_TARGETS)})]);
-  rows.push([`조합: 월 +50만 + 절세 + 스위칭`,Object.assign({},b,{monthly:(monthly+50)*1e4,tax:Math.round(rf),krx:GOAL_KRX,W:Object.assign({},FIXED_TARGETS)})]);
+  rows.push([`조합: 월 +50만 + 절세 + 스위칭`,Object.assign({},b,{monthly:(monthly+50)*1e4,tax:Math.round(rf),krx:GOAL_KRX})]);
   return rows.map(([l,o])=>({l,o,r:goalEval(o)}));
 }
 function goalCardHtml(){
@@ -1069,7 +1082,7 @@ function goalCardHtml(){
       <span style="font-size:14px;font-weight:700;color:${T.text}">🎯 ${amt}억 목표 · ${esc(g.end)}까지</span>
       <button onclick="showGoalModal()" class="tap" style="padding:6px 10px;background:${T.bg3};color:${T.teal};border-radius:8px;font-size:12px;font-weight:700">설정 ✎</button>
     </div>
-    <div style="font-size:11px;color:${T.text3};margin-top:3px">남은 ${yrs.toFixed(1)}년 · 시작 ${won(b.v0,true)} · 월 ${monthly}만 · 비중 ${GOAL_KEYS.map(k=>+portfolio.targets[k]||0).join('/')}${isGoalW?' (10억 목표형)':''} · 절세 ${g.tax?won(b.tax,true)+'/년':'미반영'}</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:3px">남은 ${yrs.toFixed(1)}년 · 시작 ${won(b.v0,true)} · 월 ${monthly}만 · 비중 ${GOAL_KEYS.map(k=>+portfolio.targets[k]||0).join('/')}${isGoalW?' (기본)':GOAL_KEYS.every(k=>(+portfolio.targets[k]||0)===GOALMAX_TARGETS[k])?' (10억 확률형)':''} · 절세 ${g.tax?won(b.tax,true)+'/년':'미반영'}</div>
     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:6px;margin-top:10px">
       <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">${amt}억 이상 확률</div><div class="mono" style="font-size:22px;font-weight:800;color:${pc(cur.p)}">${cur.p.toFixed(0)}%</div></div>
       <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">보통(중앙)</div><div class="mono" style="font-size:15px;font-weight:700;color:${T.text}">${(cur.med/1e8).toFixed(2)}억</div></div>
@@ -1085,7 +1098,7 @@ function goalCardHtml(){
         <td class="mono" style="padding:6px 0 6px 8px;text-align:right;font-weight:700;color:${pc(x.r.p)};white-space:nowrap">${x.r.p.toFixed(0)}%${i?`<div style="font-size:10px;font-weight:400;color:${T.text3}">${x.r.p-cur.p>=0?'+':''}${(x.r.p-cur.p).toFixed(0)}%p</div>`:''}</td>
       </tr>`).join('')}
     </table>
-    ${isGoalW?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:8px;width:100%;padding:9px;background:${T.teal};color:#000;border-radius:10px;font-size:12px;font-weight:700">10억 목표형 비중(${FIXED_LABEL})으로 바꾸기</button>`}
+    ${isGoalW?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:8px;width:100%;padding:9px;background:${T.teal};color:#000;border-radius:10px;font-size:12px;font-weight:700">기본 비중(${FIXED_LABEL})으로 바꾸기</button>`}
     <div style="font-size:11px;color:${T.text2};margin-top:10px;line-height:1.7;padding-top:8px;border-top:1px solid ${T.border}">
       <b>우선순위</b> ① 월 적립 늘리기(가장 확실, 하방도 올라감) ② 기간 연장 ③ 절세: 연금저축 600 + IRP 300 = 연 900만 납입 → 세액공제 ${won(900e4*0.132,true)}~${won(900e4*0.165,true)}(13.2%/16.5%, 총급여 5,500만 이하 16.5%), 환급금은 다시 투자 ④ 스위칭 탭 스타일 신호 지키기 ⑤ 비중(코인 20% 상한 유지)<br>
       <span style="color:${T.amber}">📌 ISA 만기 자금을 60일 안에 연금계좌로 옮기면 옮긴 금액의 10%(최대 300만) 추가 공제</span>
@@ -1774,18 +1787,22 @@ function fixedTargetCard(){
   const same=rows.every(([key])=>(t[key]||0)===FIXED_TARGETS[key]);
   const g=goalCfg(),b=goalBase(),r0=goalEval(b),r1=goalEval(Object.assign({},b,{krx:GOAL_KRX}));
   return `<div style="background:${T.card};border-radius:14px;border:1px solid ${T.teal}44;margin-bottom:14px;padding:12px 16px">
-    <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 10억 목표형 고정 비중 운영</div>
+    <div style="font-size:13px;font-weight:700;color:${T.text}">🎯 고정 목표 비중 운영 (기본)</div>
     <div style="font-size:11px;color:${T.text3};margin-top:4px;line-height:1.5">${FIXED_LABEL} · 리밸런싱은 반기(6·12월 말) 1회<br>자산군 비중은 신호와 무관하게 고정합니다(신호별 비중 변경은 백테스트상 우위 없음). 신호는 아래 <b>주식 내부 스타일</b>에만 씁니다.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
       <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">${g.amt}억 확률 · 지금 설정</div><div class="mono" style="font-size:18px;font-weight:800;color:${T.text}">${r0.p.toFixed(0)}%</div></div>
       <div style="background:${T.bg2};border-radius:10px;padding:8px 10px"><div style="font-size:10px;color:${T.text3}">스위칭 신호 준수 시</div><div class="mono" style="font-size:18px;font-weight:800;color:${T.teal}">${r1.p.toFixed(0)}% <span style="font-size:11px;font-weight:400;color:${T.text3}">${r1.p-r0.p>=0?'+':''}${(r1.p-r0.p).toFixed(0)}%p</span></div></div>
     </div>
     <div style="font-size:10px;color:${T.text3};margin-top:4px;line-height:1.5">'신호 준수'는 스타일 목표를 지켜 국내주식이 연 +${GOAL_KRX}%p 더 번다고 가정한 값입니다(백테스트 개선폭은 Sharpe +0.02~0.03으로 이보다 작을 수 있음). 자세한 레버는 리밸런싱 탭 🎯 카드.</div>
-    ${same?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:10px;width:100%;padding:10px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">10억 목표형 비중으로 바꾸고 리밸런싱으로 이동</button>`}
+    ${same?'':`<button onclick="applyFixedTargets()" class="tap" style="margin-top:10px;width:100%;padding:10px;background:${T.teal};color:#000;border-radius:10px;font-size:13px;font-weight:700">기본 비중으로 바꾸고 리밸런싱으로 이동</button>`}
   </div>`;
 }
 function applyFixedTargets(){
   portfolio.targets=Object.assign({},FIXED_TARGETS);
+  save();tab='rebal';render();
+}
+function applyGoalMaxTargets(){
+  portfolio.targets=Object.assign({},GOALMAX_TARGETS);
   save();tab='rebal';render();
 }
 function applyStableTargets(){
@@ -2022,10 +2039,11 @@ function rebalScreen(){
 
     ${secL('목표 비중 설정')}
     <div style="background:${T.teal}0F;border:1px solid ${T.teal}33;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:${T.text2}">
-      🎯 10억 목표형 고정 비중: ${FIXED_LABEL} · <b>반기(6·12월 말) 1회 리밸런싱, 수시 없음</b> (그 사이엔 매월 적립금을 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">하락장 방어를 원하면 안정형(${STABLE_LABEL}, 과거 MDD −17.6% vs −21.9%)을 쓰세요.</span>
+      기본 비중: ${FIXED_LABEL} · <b>반기(6·12월 말) 1회 리밸런싱, 수시 없음</b> (그 사이엔 매월 적립금을 부족 자산군에 배분)<br><span style="font-size:11px;color:${T.text3}">10억 확률형(${GOALMAX_LABEL})은 확률이 더 높고 하락폭이 큽니다(과거 MDD −25.7% vs 기본 −21.0%). 안정형은 ${STABLE_LABEL}.</span>
       <div style="display:flex;gap:6px;margin-top:8px">
-        <button onclick="applyFixedTargets()" class="tap" style="flex:1;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">10억 목표형으로</button>
-        <button onclick="applyStableTargets()" class="tap" style="flex:1;padding:8px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:12px">안정형으로</button>
+        <button onclick="applyFixedTargets()" class="tap" style="flex:1;padding:8px;background:${T.teal};color:#000;border-radius:8px;font-weight:700;font-size:12px">기본</button>
+        <button onclick="applyGoalMaxTargets()" class="tap" style="flex:1;padding:8px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:12px">10억 확률형</button>
+        <button onclick="applyStableTargets()" class="tap" style="flex:1;padding:8px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:12px">안정형</button>
       </div>
     </div>
     ${card(`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px">
@@ -2797,7 +2815,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.5</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.6</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
