@@ -61,4 +61,25 @@ run('applyStableTargets()');ok(run('portfolio.targets.bonds')===10,'안정형 �
 run("portfolio.goal={amt:5,end:'2031-10',tax:false,pension:0,rate:13.2}");
 ok(run('goalCardHtml()').includes('🎯 5억 목표 · 2031-10까지')&&run('goalCardHtml()').includes('절세 미반영'),'목표 변경 반영');
 ok(run('migratePortfolio(JSON.parse(JSON.stringify(portfolio))).goal.amt')===5,'백업·마이그레이션 후 목표 유지');
+// v6.7: 💰 투자계좌 입금 기록
+run("portfolio.deposits=[];portfolio.goal={amt:10,end:'2036-10',tax:true,pension:900,rate:13.2};monthly=250");
+ok(Array.isArray(run('migratePortfolio(JSON.parse(JSON.stringify(INIT))).deposits'))||run('Array.isArray(portfolio.deposits)'),'deposits 배열');
+{const ym=run("localYmd(new Date())").slice(0,7),y=ym.slice(0,4),lastY=(+y-1)+'-12-15';
+ run(`portfolio.deposits=[{id:'a',date:'${ym}-01',amt:1000000,memo:'월급'},{id:'b',date:'${ym}-02',amt:500000,memo:''},{id:'c',date:'${lastY}',amt:3000000,memo:''}]`);
+ const st=run('depositStats()');
+ ok(st.month===1500000&&st.total===4500000&&st.n===3,'이번 달 150만 · 누적 450만, got '+st.month+'/'+st.total);
+ ok(st.year===1500000,'올해 누적은 작년 제외');
+ const h=run('depositCardHtml()');
+ ok(h.includes('이번 달 100만 더 넣기'),'월 250만 − 150만 = 100만 더 넣기');
+ ok(h.includes('10억까지 부족')&&h.includes('수익 없이 입금만으로')&&!h.includes('NaN')&&!h.includes('undefined'),'목표액까지 부족·입금만 기준 월액');
+ ok(h.includes('계산 중')||h.includes('확률 50% 기준'),'확률 50% 기준 행');
+ run('goalCardCached()');
+ const h2=run('depositCardHtml()');
+ ok(/확률 50% 기준 앞으로 더 넣을 총액<\/span><span[^>]*>[\d.]+[억만]/.test(h2),'목표 카드 계산 후 50% 기준 총액 표시');
+ run(`portfolio.deposits.push({id:'d',date:'${ym}-03',amt:1500000,memo:''})`);
+ ok(run('depositCardHtml()').includes('이번 달 목표 입금 완료 (+50만 초과)'),'월 목표 초과 표시');
+ ok(run("rebalScreen()").includes('id=\"depositCard\"')&&run("rebalScreen()").indexOf('depositCard')<run("rebalScreen()").indexOf('goalCard')&&run("rebalScreen()").indexOf('월 투자 금액')<run("rebalScreen()").indexOf('depositCard'),'월 투자 금액 아래·🎯 카드 위에 입금 카드');
+ ok(run('migratePortfolio(JSON.parse(JSON.stringify(portfolio))).deposits.length')===4,'백업·마이그레이션 후 입금 기록 유지');
+ run("portfolio.goal.amt=0.001");ok(run('depositCardHtml()').includes('✓ 달성'),'목표 달성 시 ✓');
+}
 console.log(`\n${pass} passed, ${fail} failed`);
