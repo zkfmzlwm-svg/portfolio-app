@@ -40,7 +40,8 @@ ok(plan.months>0,'달성 개월수: '+plan.months);
 ok(plan.Xstar>=c.total,'Xstar>=현재총액');
 
 // v5.5: 목표비중 금 25·코인 15, 월 투자금 기본 250만원
-{const ft=run('FIXED_TARGETS');ok(ft.kr===30&&ft.us===20&&ft.bonds===5&&ft.gold===25&&ft.crypto===20,'10억 목표형 고정비중 30/20/5/25/20');
+{const ft=run('FIXED_TARGETS');ok(ft.kr===20&&ft.us===35&&ft.bonds===5&&ft.gold===25&&ft.crypto===15,'기본 고정비중 20/35/5/25/15');
+ const gm=run('GOALMAX_TARGETS');ok(gm.kr===30&&gm.us===20&&gm.bonds===5&&gm.gold===25&&gm.crypto===20,'10억 확률형 30/20/5/25/20');
  const st=run('STABLE_TARGETS');ok(st.kr===20&&st.us===30&&st.bonds===10&&st.gold===25&&st.crypto===15,'안정형 20/30/10/25/15');
  ok(JSON.stringify(run('INIT.targets'))===JSON.stringify(ft),'신규 설치 목표비중 = 고정비중');
  ok(run('monthly')===250,'월 투자금 기본 250만원, got '+run('monthly'));
@@ -55,11 +56,16 @@ ok(plan.Xstar>=c.total,'Xstar>=현재총액');
  run('portfolio.monthly=undefined');ok(run('savedMonthly()')===250,'저장값 없으면 250');
  run('setMonthly(250)');
  const old=run(`migratePortfolio({ver:'5.4',targets:{kr:20,us:30,bonds:10,gold:30,crypto:10},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
- ok(old.targets.kr===30&&old.targets.bonds===5&&old.targets.crypto===20&&old.ver==='6.1'&&old.goalTargetsV1,'v5.4 저장 목표비중 → 10억 목표형으로 교체');
+ ok(old.targets.kr===20&&old.targets.us===35&&old.targets.crypto===15&&old.ver==='6.1'&&old.goalTargetsV1&&old.goalTargetsV2,'v5.4 저장 목표비중 → 기본 비중으로 교체');
  const kept=run(`migratePortfolio({ver:'5.5',goalTargetsV1:true,targets:{kr:20,us:30,bonds:10,gold:20,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
  ok(kept.targets.gold===20&&kept.targets.crypto===20,'v6.4 전환 후 사용자가 바꾼 목표비중은 유지');
  const v63=run(`migratePortfolio({ver:'6.1',fixedTargetsV1:true,targets:{kr:20,us:30,bonds:10,gold:25,crypto:15},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
- ok(v63.targets.kr===30&&v63.targets.crypto===20&&v63.goal&&v63.goal.amt===10,'v6.3 사용자 → 10억 목표형 1회 교체 + 목표 기본값 10억');}
+ ok(v63.targets.kr===20&&v63.targets.us===35&&v63.goal&&v63.goal.amt===10,'v6.3 사용자 → 기본 비중 1회 교체 + 목표 기본값 10억');
+ const v65=run(`migratePortfolio({ver:'6.1',fixedTargetsV1:true,goalTargetsV1:true,targets:{kr:30,us:20,bonds:5,gold:25,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
+ ok(v65.targets.kr===20&&v65.targets.us===35&&v65.targets.crypto===15&&v65.goalTargetsV2,'v6.5 기본값(30/20/5/25/20) 사용자 → 20/35/5/25/15로 1회 교체');
+ const v65m=run(`migratePortfolio({ver:'6.1',fixedTargetsV1:true,goalTargetsV1:true,targets:{kr:25,us:25,bonds:5,gold:25,crypto:20},holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],gold:[],crypto:[],watchlist:[]},txns:[]})`);
+ ok(v65m.targets.kr===25&&v65m.targets.us===25,'v6.5에서 직접 바꾼 비중은 유지');
+ ok(run(`migratePortfolio(${JSON.stringify(v65m)}).targets.kr`)===25,'재실행 시 다시 바뀌지 않음');}
 // 고정 목표비중 합계 100 + 초기 로드 시 적용
 {const p=run('FIXED_TARGETS');const s=p.kr+p.us+p.bonds+p.gold+p.crypto;ok(s===100,'고정비중 합=100 ('+s+')');
  ok(run('portfolio.fixedTargetsV1')===true,'고정비중 1회 전환 플래그');}
