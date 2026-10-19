@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.6</title>
+<title>포트폴리오 v6.7</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -18,8 +18,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .spin{display:inline-block;animation:spin .7s linear infinite}
 .pulse{animation:pulse 1.5s infinite}
 .scr{overflow-y:auto;-webkit-overflow-scrolling:touch}
-input[type=text],input[type=number]{background:var(--input,#0C1524);border:1px solid var(--border,#172033);border-radius:10px;color:var(--text,#ECF1FF);padding:10px 12px;font-size:14px;outline:none;width:100%}
-input[type=text]:focus,input[type=number]:focus{border-color:var(--teal,#00BFA6)}
+input[type=text],input[type=number],input[type=date],input[type=month]{background:var(--input,#0C1524);border:1px solid var(--border,#172033);border-radius:10px;color:var(--text,#ECF1FF);padding:10px 12px;font-size:14px;outline:none;width:100%}
+input[type=text]:focus,input[type=number]:focus,input[type=date]:focus,input[type=month]:focus{border-color:var(--teal,#00BFA6)}
 button{cursor:pointer;font-family:inherit;border:none;outline:none}
 .tap:active{opacity:.7;transform:scale(.97)}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:flex-end}
@@ -49,6 +49,7 @@ function applyTheme(name){
   Object.assign(T,THEMES[uiTheme]);
   const r=typeof document!=='undefined'&&document.documentElement;
   if(r&&r.style&&r.style.setProperty)Object.keys(T).forEach(k=>r.style.setProperty('--'+k,T[k]));
+  if(r&&r.style)r.style.colorScheme=uiTheme==='light'?'light':'dark';   // 날짜 입력칸 달력 아이콘·선택창 색
   // 상태바·내비게이션바 색 (앱 쉘)
   try{if(window.UiBridge&&window.UiBridge.setBars)window.UiBridge.setBars(T.bg,T.bg2,uiTheme==='light');}catch(e){}
 }
@@ -755,6 +756,7 @@ if(!portfolio.switching||!portfolio.switching.retail)
   portfolio.switching=JSON.parse(JSON.stringify(INIT.switching));
 if(!portfolio.holdings.watchlist)portfolio.holdings.watchlist=[];
 if(!Array.isArray(portfolio.txns))portfolio.txns=[];
+if(!Array.isArray(portfolio.deposits))portfolio.deposits=[];   // v6.7: 투자계좌 입금 기록 [{id,date,amt(원),memo}]
 if(!portfolio.targets)portfolio.targets=Object.assign({},FIXED_TARGETS);
 // 고정 비중 운영 전환(1회): 기존 저장 목표비중을 백테스트 기반 고정 비중으로 교체
 if(!portfolio.fixedTargetsV1){portfolio.targets=Object.assign({},FIXED_TARGETS);portfolio.fixedTargetsV1=true;Store.set('porto',JSON.stringify(portfolio));}
@@ -1114,7 +1116,7 @@ function goalCard(){
   if(!ready)setTimeout(renderGoalCard,30);
   return `<div id="goalCard" style="background:${T.card};border-radius:14px;padding:14px 16px;border:1px solid ${T.teal}44;margin-bottom:8px">${ready?_goalHtml.h:`<div style="font-size:13px;color:${T.text3}">🎯 목표 확률 계산 중…</div>`}</div>`;
 }
-function renderGoalCard(){const el=document.getElementById('goalCard');if(el)el.innerHTML=goalCardCached();}
+function renderGoalCard(){const el=document.getElementById('goalCard');if(el)el.innerHTML=goalCardCached();renderDepositCard();}
 function showGoalModal(){
   const g=goalCfg();
   const fld=(id,lab,v,ex='')=>`<div style="margin-bottom:10px"><div style="font-size:12px;color:${T.text3};margin-bottom:4px">${lab}</div><input id="${id}" value="${esc(v)}" ${ex} style="font-size:15px;font-family:monospace"></div>`;
@@ -1137,6 +1139,81 @@ function saveGoal(){
   if(!/^\d{4}-\d{2}$/.test(end)){alert('목표 시점을 YYYY-MM 형식으로 입력하세요.');return;}
   portfolio.goal={amt,end,tax:!!document.getElementById('gTax')?.checked,pension:isNaN(pen)?0:Math.min(900,Math.max(0,pen)),rate:parseFloat(document.getElementById('gRate')?.value)||13.2};
   save();closeModal();render();
+}
+
+// ── 💰 투자계좌 입금 기록 (v6.7) — 리밸런싱 탭 월 투자 금액 아래 ──
+// portfolio.deposits=[{id,date:'YYYY-MM-DD',amt:원,memo}]. 이번 달 입금 vs 월 투자 금액, 목표액(🎯 설정)까지 더 넣어야 할 금액.
+function depositSum(pred){return (portfolio.deposits||[]).filter(pred||(()=>true)).reduce((s,d)=>s+(+d.amt||0),0);}
+function depositStats(now){
+  now=now||new Date();
+  const ym=localYmd(now).slice(0,7),y=ym.slice(0,4);
+  return{month:depositSum(d=>String(d.date).slice(0,7)===ym),year:depositSum(d=>String(d.date).slice(0,4)===y),total:depositSum(),n:(portfolio.deposits||[]).length,ym};
+}
+function addDeposit(){
+  const amt=parseFloat(String(document.getElementById('depAmt')?.value||'').replace(/,/g,'')),date=String(document.getElementById('depDate')?.value||'');
+  if(!(amt>0)){alert('입금액(만원)을 입력하세요.');return;}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){alert('날짜를 확인하세요.');return;}
+  const memo=String(document.getElementById('depMemo')?.value||'').trim().slice(0,30);
+  portfolio.deposits.push({id:'d'+Date.now()+Math.random().toString(36).slice(2,5),date,amt:Math.round(amt*1e4),memo});
+  portfolio.deposits.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  save();renderDepositCard();
+}
+function delDeposit(id){
+  const d=(portfolio.deposits||[]).find(x=>x.id===id);if(!d)return;
+  if(!confirm(`${d.date} ${won(d.amt,true)} 입금 기록을 삭제할까요?`))return;
+  portfolio.deposits=portfolio.deposits.filter(x=>x.id!==id);save();renderDepositCard();
+}
+function showDepositModal(){
+  const L=[...(portfolio.deposits||[])].reverse();
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:4px">💰 입금 기록 전체 (${L.length}건)</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:10px">누적 ${won(depositSum(),true)}</div>
+    <div style="max-height:56vh;overflow-y:auto;margin-bottom:12px">${L.length?L.map(d=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid ${T.border};font-size:13px">
+      <span style="color:${T.text2}"><span class="mono">${esc(d.date)}</span>${d.memo?` · ${esc(d.memo)}`:''}</span>
+      <span style="display:flex;gap:10px;align-items:center"><span class="mono" style="color:${T.text};font-weight:700">${won(d.amt,true)}</span><button onclick="delDeposit('${d.id}');showDepositModal()" style="background:none;color:${T.red};font-size:12px;padding:2px 4px">삭제</button></span>
+    </div>`).join(''):`<div style="font-size:12px;color:${T.text3}">기록 없음</div>`}</div>
+    <button onclick="closeModal()" class="tap" style="width:100%;padding:12px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">닫기</button>`);
+}
+function depositCardHtml(){
+  const st=depositStats(),mw=monthly*1e4,left=Math.max(0,mw-st.month),pct=mw>0?Math.min(100,st.month/mw*100):0;
+  const g=goalCfg(),goal=g.amt*1e8,tot=calc().total,gap=Math.max(0,goal-tot),ml=goalMonthsLeft(g);
+  const ready=typeof _goalHtml!=='undefined'&&_goalHtml&&_goalHtml.k===goalKey();
+  const need=ready?goalNeedMonthly(goalBase()):undefined;
+  const recent=[...(portfolio.deposits||[])].slice(-3).reverse();
+  const row=(k,v,c)=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:${T.text3}">${k}</span><span class="mono" style="color:${c||T.text};font-weight:700">${v}</span></div>`;
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-size:14px;color:${T.text2}">💰 투자계좌 입금 기록</span>
+      ${st.n?`<button onclick="showDepositModal()" class="tap" style="padding:5px 9px;background:${T.bg3};color:${T.text2};border-radius:8px;font-size:11px">전체 ${st.n}건 ›</button>`:''}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input id="depAmt" type="number" inputmode="decimal" min="0" step="1" placeholder="입금액(만원)" style="flex:1.1;font-size:14px;font-family:monospace;padding:8px">
+      <input id="depDate" type="date" value="${localYmd(new Date())}" style="flex:1.3;font-size:13px;padding:8px">
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <input id="depMemo" type="text" placeholder="메모(선택)" maxlength="30" style="flex:1;font-size:13px;padding:8px">
+      <button onclick="addDeposit()" class="tap" style="padding:8px 14px;background:${T.teal};color:#000;border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap">＋ 기록</button>
+    </div>
+    <div style="font-size:12px;color:${T.text2};margin-bottom:4px">이번 달(${st.ym.slice(5)}월) <b class="mono" style="color:${T.text}">${won(st.month,true)}</b> / 월 투자 금액 ${monthly}만원</div>
+    <div style="height:6px;background:${T.bg3};border-radius:3px;overflow:hidden;margin-bottom:5px"><div style="height:100%;width:${pct.toFixed(1)}%;background:${left?T.amber:T.green}"></div></div>
+    <div style="font-size:12px;font-weight:700;color:${left?T.amber:T.green};margin-bottom:8px">${left?`이번 달 ${won(left,true)} 더 넣기`:`✓ 이번 달 목표 입금 완료${st.month>mw?` (+${won(st.month-mw,true)} 초과)`:''}`}</div>
+    <div style="background:${T.bg2};border-radius:10px;padding:8px 10px">
+      ${row('올해 누적 입금',won(st.year,true))}
+      ${row('전체 누적 입금',won(st.total,true))}
+      <div style="border-top:1px solid ${T.border};margin:5px 0"></div>
+      ${row(`🎯 ${g.amt}억까지 부족 (현재 총자산 ${won(tot,true)})`,gap?won(gap,true):'✓ 달성',gap?T.text:T.green)}
+      ${gap?row(`수익 없이 입금만으로 채우면 · 남은 ${ml}개월`,`월 ${won(Math.ceil(gap/ml/1e4)*1e4,true)}`,T.text2):''}
+      ${gap?row('확률 50% 기준 앞으로 더 넣을 총액',need===undefined?'계산 중…':need==null?'2,000만/월 초과':`${won(need*1e4*ml,true)} · 월 ${need}만`,T.teal):''}
+    </div>
+    ${recent.length?`<div style="margin-top:8px">${recent.map(d=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0"><span style="color:${T.text3}"><span class="mono">${esc(d.date.slice(5))}</span>${d.memo?` · ${esc(d.memo)}`:''}</span><span style="display:flex;gap:8px;align-items:center"><span class="mono" style="color:${T.text2}">${won(d.amt,true)}</span><button onclick="delDeposit('${d.id}')" style="background:none;color:${T.text3};font-size:11px;padding:0 2px">✕</button></span></div>`).join('')}</div>`:''}
+    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">입금 기록은 보유 종목·총자산에 자동 반영되지 않습니다(매수는 종목 탭에서 반영). 확률 50% 기준은 아래 🎯 카드와 같은 시뮬레이션(목표 금액·시점은 🎯 설정)입니다.</div>`;
+}
+function depositCard(){return `<div id="depositCard" style="background:${T.card};border-radius:14px;padding:14px 16px;border:1px solid ${T.border};margin-bottom:8px">${depositCardHtml()}</div>`;}
+function renderDepositCard(){
+  const el=document.getElementById('depositCard');if(!el)return;
+  const dv=(document.getElementById('depDate')||{}).value;
+  el.innerHTML=depositCardHtml();
+  // 다시 그려도 고른 날짜는 유지(금액·메모는 기록 후 비움)
+  const de=document.getElementById('depDate');if(de&&dv)de.value=dv;
 }
 
 // ── 분류 자동 판정 ──
@@ -2021,6 +2098,7 @@ function rebalScreen(){
     <div style="display:flex;justify-content:space-between;font-size:11px;color:${T.text3};margin-top:8px">
       <span>50만</span><span>200만</span><span>350만</span><span>500만</span>
     </div>`)}
+    ${depositCard()}
     ${goalCard()}
     <div id="targetMonths" style="background:${T.card};border-radius:14px;padding:16px;border:1px solid ${T.teal}44;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -2815,7 +2893,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.6</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.7</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
