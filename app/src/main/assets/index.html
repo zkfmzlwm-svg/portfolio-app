@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.7</title>
+<title>포트폴리오 v6.8</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -261,14 +261,28 @@ const DT_SECTOR_PAIRS=[
   {id:'fade',label:'급등 역추세',us:'QQQ',ref:'SPY',dir:'up',th:2,exit:'tp',tp:0.5,
    codes:[{code:'114800',name:'KODEX 인버스',etf:true,gtax:true},{code:'251340',name:'KODEX 코스닥150선물인버스',etf:true,gtax:true}]},
 ];
+// v6.8: 신규 2쌍 — 근거 analysis/daytrade/new_pairs.py (2014-08~2026-11, 같은 규칙: 신호일 시가 매수 → 다음 거래일 시가 매도)
+// · 15개 섹터·1,407개 조합을 학습(2014-08~2021)에서만 고르고 검증(2022~2026-11)으로 확인 → 검증 t ≥ 2·합산 Sharpe 개선 두 쌍만 통과
+//   (방산·증권·반도체장비·인터넷·코스닥 바이오 등은 학습에선 좋았지만 검증 구간 0 근처 또는 손실)
+// · NVDA ≤ −3% → TIGER 반도체·KODEX 반도체: 연 52건, 거래당 +0.62%, 승률 59%, Sharpe 1.07, MDD −17% · 검증 +0.64%(t 3.6)
+//   기존 쌍과 안 겹치는 날(38%)도 +0.33%(t 2.3) — SOXX 급락 없이 엔비디아만 빠진 날의 새 신호
+// · ^VIX ≥ +15% → SK하이닉스·KODEX 반도체: 연 21건, +0.89%, 63%, Sharpe 1.00, MDD −13% · 검증 +0.99%(t 2.5)
+//   공포지수 급등 = 미국 급락과 같은 신호라 '상승 기준'으로 매수. 신호일 74%가 기존 쌍과 겹쳐 그날 비중을 키우는 역할
+// · 8쌍 합산 Sharpe 1.41 (기존 6쌍 1.28), MDD −7% (−10%), 2014-19 1.07 · 2020-22 1.70 · 2023-26 1.66
+const DT_V68_PAIRS=[
+  {id:'nvda',label:'반도체(NVDA)',us:'NVDA',ref:'SOXX',dir:'down',th:3,
+   codes:[{code:'091230',name:'TIGER 반도체',etf:true},{code:'091160',name:'KODEX 반도체',etf:true}]},
+  {id:'vix',label:'공포지수',us:'^VIX',ref:'SPY',dir:'up',th:15,fear:true,
+   codes:[{code:'000660',name:'SK하이닉스',etf:false},{code:'091160',name:'KODEX 반도체',etf:true}]},
+];
 const DT_DEFAULT={
   pairs:[
     {id:'p1',label:'반도체',us:'SOXX',ref:'SOXL',dir:'down',th:3,
      codes:[{code:'000660',name:'SK하이닉스',etf:false},{code:'005930',name:'삼성전자',etf:false}]},
     {id:'p2',label:'지수',us:'SPY',ref:'',dir:'down',th:1.5,
      codes:[{code:'069500',name:'KODEX 200',etf:true},{code:'229200',name:'KODEX 코스닥150',etf:true}]},
-  ].concat(DT_SECTOR_PAIRS),
-  exit:'nextopen',amt:1000000,fee:0.015,sectorsV1:true,
+  ].concat(DT_SECTOR_PAIRS,DT_V68_PAIRS),
+  exit:'nextopen',amt:1000000,fee:0.015,sectorsV1:true,pairsV68:true,
   start:null,paper:[],done:{},orders:[]
 };
 const DT_TAX=0.20;   // 개별주 매도 증권거래세 %(2026, 코스피는 농특세 포함) — 국내 ETF는 면제
@@ -734,6 +748,11 @@ function migratePortfolio(p){
   if(!p.dt.sectorsV1){
     DT_SECTOR_PAIRS.forEach(x=>{if(!p.dt.pairs.some(q=>q.id===x.id))p.dt.pairs.push(JSON.parse(JSON.stringify(x)));});
     p.dt.sectorsV1=true;
+  }
+  // v6.8: NVDA·VIX 쌍을 1회 추가(규칙은 v6.3과 같음 — 같은 id면 건너뜀, 지운 뒤엔 다시 넣지 않음)
+  if(!p.dt.pairsV68){
+    DT_V68_PAIRS.forEach(x=>{if(!p.dt.pairs.some(q=>q.id===x.id))p.dt.pairs.push(JSON.parse(JSON.stringify(x)));});
+    p.dt.pairsV68=true;
   }
   // v6.4: 10억 목표형 고정 비중으로 1회 교체(사용자 요청) + 목표 설정(portfolio.goal) 기본값
   if(!p.goalTargetsV1){p.targets=Object.assign({},FIXED_TARGETS);p.goalTargetsV1=true;p.goalTargetsV2=true;}
@@ -2551,6 +2570,8 @@ function dtRuleText(p){return (p.dir==='up'?`상승 ≥ +${p.th}% → 매수`:`�
 function dtExitLabel(p,dt){const ex=dtExitMode(p,dt);return ex==='tp'?`시가 +${p.tp}% 지정가 익절, 못 닿으면 당일 종가 매도`:ex==='close'?'당일 종가 매도':'다음 거래일 시가 매도';}
 // 인버스 ETF만 담은 쌍(급등 역추세)은 '상승 후 매수' 손실 경고 대상이 아님
 function dtIsFade(p){return p.codes.length>0&&p.codes.every(c=>/인버스/.test(c.name||''));}
+// 공포지수(VIX 계열)는 상승 = 미국 급락이라 '상승 후 매수'가 되돌림 매수 방향
+function dtIsFear(p){return !!(p&&(p.fear||/^\^?VIX/i.test(p.us||'')));}
 function dtPairCard(p,dt){
   const v=dtCache.sig[p.id],today=kstYmd();
   let badge=dtBadge('데이터 없음',T.text3),body='',rows='';
@@ -2563,7 +2584,8 @@ function dtPairCard(p,dt){
     if(v.hit)body+=`<div style="color:${T.text};margin-top:4px">${v.when==='preopen'?'08:30~09:00 시장가 매수 → 09:00 시가 체결':v.when==='today'?'오늘 시가 매수 신호였습니다 — 시가 이후 진입은 백테스트(시가 체결)와 다릅니다':'다음 거래일 08:30~09:00 시장가 매수'} · ${dtExitLabel(p,dt)}</div>`;
     if(v.contra)body+=`<div style="color:${T.amber};margin-top:4px">미국 급등 다음날은 국내 시가가 고점인 경향입니다(반도체 시가→종가 평균 −0.2~−0.3%). 사지 말고, 팔 계획이면 시가에 파세요.</div>`;
   }
-  if(p.dir==='up'&&!dtIsFade(p))body+=`<div style="color:${T.red};margin-top:4px">이 방향(상승 후 매수)은 백테스트상 손실이었습니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%).</div>`;
+  if(p.dir==='up'&&dtIsFear(p))body+=`<div style="color:${T.text3};margin-top:4px">공포지수 급등 = 미국 급락 신호입니다. 급락 쌍들과 같은 날 겹치는 경우가 많아(74%) 그날 반도체 비중이 커집니다.</div>`;
+  if(p.dir==='up'&&!dtIsFade(p)&&!dtIsFear(p))body+=`<div style="color:${T.red};margin-top:4px">이 방향(상승 후 매수)은 백테스트상 손실이었습니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%).</div>`;
   if(p.note)body+=`<div style="color:${T.amber};margin-top:4px">${esc(p.note)}</div>`;
   if(v&&v.live)body+=`<div style="color:${T.text3};margin-top:4px">미국 장중 ${esc(p.us)} ${pct(v.live.chg*100)}${v.refLive&&v.refLive.chg!=null?` · ${esc(p.ref)} ${pct(v.refLive.chg*100)}`:''} — 마감 등락으로 다음 거래일 신호가 정해집니다</div>`;
   rows=p.codes.map(m=>{
@@ -2608,7 +2630,7 @@ function dtPaperView(dt){
   return `${secL('모의매매 성과 ('+dt.start+'부터 '+days+'일)')}
     ${card(s.n?`<div style="display:flex;gap:4px">${stat('거래',s.n+'건')}${stat('승률',(s.win*100).toFixed(0)+'%')}${stat('거래당',pct(s.avg),pctC(s.avg))}${stat('누적 손익',won(Math.round(s.pnl),true),pctC(s.pnl))}</div>
       ${byPair?`<div style="margin-top:10px;border-top:1px solid ${T.border};padding-top:6px">${byPair}</div>`:''}
-      <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">백테스트 기대치: 거래당 +0.81% · 승률 60% (기본 5쌍, 2014-07~2026-10, 다음날 시가 청산)</div>`
+      <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">백테스트 기대치: 거래당 +0.77% · 승률 60% (다음날 시가 청산 7쌍) · 급등 역추세 +0.14% · 77% (2014-08~2026-11)</div>`
       :`<div style="font-size:13px;color:${T.text2};line-height:1.6">아직 확정된 모의 거래가 없습니다. ${dt.start} 이후 신호가 나오면 자동으로 기록됩니다.</div>`)}
     ${open.length?secL('보유 중 (청산 대기)')+card(open.map(p=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid ${T.border}"><span style="color:${T.text}">${esc(p.name)}</span><span class="mono" style="color:${T.text2}">${p.d.slice(5)} 시가 ${won(p.ent)}</span></div>`).join('')):''}
     ${list.length?secL('거래 내역 (최근 60건)')+card(list.slice(0,60).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${T.border}">
@@ -2642,13 +2664,14 @@ function dtCfgView(dt){
         <button onclick="dtRemoveCode('${p.id}','${m.code}')" class="tap" style="${sm};background:${T.red}22;color:${T.red}">삭제</button></div>`).join('')}
     <div style="display:flex;gap:8px;margin-top:10px"><input id="dtPC_${p.id}" type="text" placeholder="종목코드 6자리 (예: 000660)" style="flex:1"><button onclick="dtAddCode('${p.id}')" class="tap" style="${sbtn}">추가</button></div>`);
   // c: 0 일반 · 1 합산(강조) · 2 근거 약함 · 3 손실
-  const BT=[['SOXX ≤ −3% → SK하이닉스·삼성전자','31','+0.96%','58%','0.96','−21%',0],['SPY ≤ −1.5% → KODEX 200·코스닥150','31','+0.56%','61%','0.94','−13%',0],
-            ['LLY ≤ −4% → KODEX 바이오·TIGER 헬스케어','7','+1.37%','64%','0.85','−5%',0],['ALB ≤ −4% → KODEX 2차전지산업·에코프로','33','+0.88%','60%','0.90','−37%',0],
-            ['XOM ≤ −4% → KODEX 에너지화학·롯데케미칼','9','+0.45%','61%','0.26','−14%',2],
-            ['QQQ ≥ +2% → KODEX 인버스·코스닥150선물인버스, +0.5% 익절','28','+0.14%','77%','1.04','−3%',0],
-            ['기본 5쌍 합산 (급등 역추세 제외)','111','+0.81%','60%','1.28','−13%',1],['(참고) 반도체·지수 2쌍만','62','+0.76%','59%','1.09','−15%',0],
+  const BT=[['SOXX ≤ −3% → SK하이닉스·삼성전자','30','+0.99%','58%','0.96','−21%',0],['SPY ≤ −1.5% → KODEX 200·코스닥150','29','+0.56%','61%','0.91','−13%',0],
+            ['LLY ≤ −4% → KODEX 바이오·TIGER 헬스케어','7','+1.37%','64%','0.81','−5%',0],['ALB ≤ −4% → KODEX 2차전지산업·에코프로','31','+0.88%','60%','0.85','−37%',0],
+            ['XOM ≤ −4% → KODEX 에너지화학·롯데케미칼','8','+0.38%','60%','0.20','−14%',2],
+            ['QQQ ≥ +2% → KODEX 인버스·코스닥150선물인버스, +0.5% 익절','27','+0.14%','77%','0.99','−3%',0],
+            ['NVDA ≤ −3% → TIGER 반도체·KODEX 반도체 (v6.8)','52','+0.62%','59%','1.07','−17%',0],['^VIX ≥ +15% → SK하이닉스·KODEX 반도체 (v6.8)','21','+0.89%','63%','1.00','−13%',0],
+            ['기본 8쌍 합산','204','+0.68%','62%','1.41','−7%',1],['(참고) 기존 6쌍','132','+0.68%','64%','1.28','−10%',0],['(참고) 8쌍에서 에너지 빼면','196','+0.70%','63%','1.48','−8%',0],
             ['SOXX ≥ +2% → 반도체 2종목, +0.5% 익절','71','−0.39%','66%','−2.19','−80%',3],['SPY ≥ +1% → KODEX 200·코스닥150, +0.5% 익절','65','−0.13%','60%','−0.95','−40%',3],
-            ['XLE ≤ −3% → SK이노베이션·S-Oil','21','−0.01%','49%','−0.01','−33%',3],
+            ['XLE ≤ −3% → SK이노베이션·S-Oil','21','−0.01%','49%','−0.01','−33%',3],['XAR ≤ −2% → 현대로템 (학습 +1.05% → 검증 −0.33%)','16','+0.41%','61%','0.40','−49%',3],
             ['SOXL > 0% → 반도체 2종목, 당일 종가','273','−0.35%','39%','−2.55','−100%',3],['SOXL > +3% → 반도체 2종목, 다음날 시가','147','−0.33%','42%','−1.16','−95%',3]];
   return `${secL('공통 설정')}
     ${card(`${lab('매도 시점',true)}${opt('exit',dt.exit,[['nextopen','다음 거래일 시가 (권장)'],['close','당일 종가']])}
@@ -2657,12 +2680,12 @@ function dtCfgView(dt){
     ${secL('종목쌍 (미국 티커 → 국내 종목)')}
     ${dt.pairs.map(pairCard).join('')}
     ${btn('＋ 종목쌍 추가','dtAddPair()',T.bg3,`color:${T.teal};margin-bottom:8px`)}
-    ${secL('백테스트 (2014-07~2026-10, 시가 매수, 수수료·거래세 포함)')}
+    ${secL('백테스트 (2014-08~2026-11, 시가 매수, 수수료·거래세 포함)')}
     ${card(`<table style="width:100%;border-collapse:collapse;font-size:11px;text-align:right" class="mono">
       <tr style="color:${T.text3}"><td style="text-align:left">신호 → 종목</td>${['연','거래당','승률','Sharpe','MDD'].map(h=>`<td style="padding-left:6px;white-space:nowrap">${h}</td>`).join('')}</tr>
       ${BT.map(r=>`<tr style="color:${[T.text2,T.teal,T.amber,T.red][r[6]]}">${r.slice(0,6).map((c,j)=>`<td style="padding:4px 0 4px ${j?6:0}px;${j?'white-space:nowrap':'text-align:left;font-family:inherit'}">${c}</td>`).join('')}</tr>`).join('')}
     </table>
-    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 급등 역추세: 미국 급등 다음날 시가에 사서 +0.5~1% 익절(못 닿으면 종가)하는 방식은 종목을 사면 전 섹터 손실(빨간 '익절' 줄)이고, 인버스 ETF로 뒤집으면 플러스입니다. 인버스 ETF 매매차익 15.4% 과세를 반영했습니다.<br>· 그 밖의 줄은 다음날 시가 매도 기준입니다. 기본 5쌍은 2014-19·2020-22·2023-26 Sharpe가 1.07·1.55·1.48로 고르게 플러스였습니다.<br>· 바이오·2차전지·에너지는 약 700개 조합(89쌍 × 기준 8개) 중에서 고른 값이라 실제 성과는 표보다 낮을 수 있습니다. 주황 줄(에너지)은 통계적으로 약합니다.<br>· 원전·전력(URA·CCJ·ETN·VRT → 두산에너빌리티·한전기술 등)은 기간별 부호가 엇갈려 넣지 않았습니다.<br>· 같은 신호라도 당일 종가에 팔면 2023년 이후 거래당 0 근처라 다음날 시가 매도를 권장합니다.<br>· 기준을 낮추면(SOXX −2%) 신호는 두 배지만 Sharpe가 0.74로 떨어집니다.<br>· 빨간 줄(미국 상승 후 매수)은 국내 시가가 이미 올라 시작해 장중에 밀리는 탓에 손실이었습니다.</div>`)}`;
+    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 급등 역추세: 미국 급등 다음날 시가에 사서 +0.5~1% 익절(못 닿으면 종가)하는 방식은 종목을 사면 전 섹터 손실(빨간 '익절' 줄)이고, 인버스 ETF로 뒤집으면 플러스입니다. 인버스 ETF 매매차익 15.4% 과세를 반영했습니다.<br>· 그 밖의 줄은 다음날 시가 매도 기준입니다. 기본 8쌍은 2014-19·2020-22·2023-26 Sharpe가 1.07·1.70·1.66으로 고르게 플러스였습니다.<br>· v6.8 NVDA·VIX 쌍: 15개 섹터 1,407개 조합을 2014~2021 데이터로만 고르고 2022년 이후로 확인해 통과한 두 쌍입니다(검증 t 3.6·2.5). 방산·증권·반도체장비·인터넷·코스닥 바이오는 학습 구간만 좋고 검증 구간에서 사라졌습니다(빨간 XAR 줄).<br>· VIX 쌍은 신호일 74%가 기존 급락 쌍과 겹칩니다. 같은 날 여러 쌍이 겹치면 매수 종목이 많아지지만(최대 14종목), 겹친 날이 수익도 컸습니다(5쌍 동시 평균 +3.0%).<br>· 바이오·2차전지·에너지는 약 700개 조합(89쌍 × 기준 8개) 중에서 고른 값이라 실제 성과는 표보다 낮을 수 있습니다. 주황 줄(에너지)은 최신 데이터에서 t 1.0으로 더 약해졌고, 빼면 합산 Sharpe가 1.41 → 1.48로 오릅니다. 삭제를 권장합니다.<br>· 원전·전력(URA·CCJ·ETN·VRT → 두산에너빌리티·한전기술 등)은 기간별 부호가 엇갈려 넣지 않았습니다.<br>· 같은 신호라도 당일 종가에 팔면 2023년 이후 거래당 0 근처라 다음날 시가 매도를 권장합니다.<br>· 기준을 낮추면(SOXX −2%) 신호는 두 배지만 Sharpe가 0.74로 떨어집니다.<br>· 빨간 줄(미국 상승 후 매수)은 국내 시가가 이미 올라 시작해 장중에 밀리는 탓에 손실이었습니다.</div>`)}`;
 }
 function dtSet(key,v){const dt=dtState();dt[key]=v;save();dtCompute();render();}
 function dtSaveNum(key,id){
@@ -2697,7 +2720,7 @@ function dtPairExit(id,v){
 }
 function dtPairDir(id,dir){
   const p=dtPair(id);if(!p)return;
-  if(dir==='up'&&!dtIsFade(p)&&!confirm('상승 후 매수는 백테스트상 손실 방향입니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%). 그래도 바꿀까요?'))return;
+  if(dir==='up'&&!dtIsFade(p)&&!dtIsFear(p)&&!confirm('상승 후 매수는 백테스트상 손실 방향입니다(SOXL 상승 → SK하이닉스·삼성전자 거래당 −0.33%). 그래도 바꿀까요?'))return;
   p.dir=dir;save();dtCompute();render();
 }
 function dtRemovePair(id){
@@ -2893,7 +2916,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.7</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.8</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
