@@ -1,6 +1,7 @@
 # 신규상장(IPO) 원자료 → data/ipo  (python3 -I ipo_fetch.py, 약 3분)
 #   1) 38커뮤니케이션 신규상장 목록: 기업명·상장일·공모가·시초가·첫날종가·종목코드 (https는 서버 DH 키 문제로 http 사용)
 #   2) 38 수요예측결과 목록: 기관경쟁률·의무보유확약 비율
+#   (--intraday: 4) 야후 60분봉만 받음)
 #   3) 네이버 fchart 일봉(수정주가) 상장일부터 최대 40봉 — 공모가 대비 배율은 38 시초가로 계산(ipo.py)
 import re, time, urllib.request, pandas as pd, os, sys
 from concurrent.futures import ThreadPoolExecutor
@@ -47,10 +48,33 @@ def bars(code,d0):
     df['t']=pd.to_datetime(df.t); df[['o','h','l','c','v']]=df[['o','h','l','c','v']].astype(float)
     df=df[df.t>=pd.Timestamp(d0)-pd.Timedelta(days=10)].head(40)
     df.to_csv(f'data/ipo/{code}.csv',index=False); return code,len(df)
-if __name__=='__main__':
+if __name__=='__main__' and '--intraday' not in sys.argv:
     L=listing(); L.to_csv('data/ipo/list38.csv',index=False); print('신규상장',len(L),L.date.min(),L.date.max())
     D=demand(); pd.DataFrame(D).to_csv('data/ipo/demand38_raw.csv',index=False,header=False); print('수요예측',len(D))
     todo=L[L.code.notna()&(L.date<=time.strftime('%Y-%m-%d'))]
     with ThreadPoolExecutor(6) as ex:
         res=list(ex.map(lambda r:bars(r.code,r.date),todo.itertuples()))
     print('일봉',sum(1 for _,n in res if n>0),'/',len(res))
+
+# 4) 야후 60분봉(최근 730일)·5분봉(최근 60일) — 상장일 장중 경로(익절이 언제 닿았는지, 시간 손절) 확인용. python3 -I ipo_fetch.py --intraday
+def yahoo_60m(code,d0,iv='60m',rng='730d'):
+    import json
+    for suf in ['.KQ','.KS']:
+        try: j=json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{code}{suf}?interval={iv}&range={rng}','utf-8'))
+        except Exception: continue
+        r=(j.get('chart') or {}).get('result')
+        if not r or not r[0].get('timestamp'): continue
+        r=r[0]; q=r['indicators']['quote'][0]
+        df=pd.DataFrame({'t':pd.to_datetime(r['timestamp'],unit='s',utc=True).tz_convert('Asia/Seoul').tz_localize(None),
+                         'o':q['open'],'h':q['high'],'l':q['low'],'c':q['close'],'v':q['volume']}).dropna()
+        df=df[df.t.dt.strftime('%Y-%m-%d')==d0]
+        if len(df): df.to_csv(f'data/ipo/{code}_{iv}.csv',index=False); return code,len(df),suf
+    return code,0,None
+if __name__=='__main__' and '--intraday' in sys.argv:
+    L=pd.read_csv('data/ipo/list38.csv',dtype={'code':str})
+    todo=L[L.code.notna()&(L.date>='2024-11-06')&(L.date<=time.strftime('%Y-%m-%d'))&~L.name.str.contains('스팩|리츠')]
+    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:yahoo_60m(r.code,r.date),todo.itertuples()))
+    print('60분봉 상장일 있음',sum(1 for _,n,_ in res if n>0),'/',len(res))
+    t5=todo[todo.date>=(pd.Timestamp.today()-pd.Timedelta(days=58)).strftime('%Y-%m-%d')]   # 5분봉은 최근 60일만
+    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:yahoo_60m(r.code,r.date,'5m','60d'),t5.itertuples()))
+    print('5분봉 상장일 있음',sum(1 for _,n,_ in res if n>0),'/',len(res))
