@@ -102,7 +102,9 @@ public class MainActivity extends Activity {
                         conn.setReadTimeout(8000);
                         conn.setInstanceFollowRedirects(true);
 
-                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                        // 38커뮤니케이션(신규상장 일정)은 EUC-KR 페이지 → MS949로 읽음. 그 밖은 기존대로 UTF-8
+                        String charset = url.contains("38.co.kr") ? "MS949" : "UTF-8";
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), charset));
                         StringBuilder sb = new StringBuilder();
                         String line;
                         while ((line = br.readLine()) != null) sb.append(line).append('\n'); // 줄바꿈 보존 (CSV 파싱용)
