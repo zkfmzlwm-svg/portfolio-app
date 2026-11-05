@@ -56,11 +56,12 @@ if __name__=='__main__' and '--intraday' not in sys.argv:
         res=list(ex.map(lambda r:bars(r.code,r.date),todo.itertuples()))
     print('일봉',sum(1 for _,n in res if n>0),'/',len(res))
 
-# 4) 야후 60분봉(최근 730일)·5분봉(최근 60일) — 상장일 장중 경로(익절이 언제 닿았는지, 시간 손절) 확인용. python3 -I ipo_fetch.py --intraday
+# 4) 야후 60분봉(최근 730일)·5분봉·2분봉(최근 60일), 네이버 1분봉(최근 약 5거래일) — 상장일 장중 경로(익절이 언제 닿았는지, 시간 손절) 확인용. python3 -I ipo_fetch.py --intraday
 def yahoo_60m(code,d0,iv='60m',rng='730d'):
     import json
     for suf in ['.KQ','.KS']:
-        try: j=json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{code}{suf}?interval={iv}&range={rng}','utf-8'))
+        try:   # 없는 접미사(.KQ/.KS)는 404 → 재시도 없이 다음으로
+            with urllib.request.urlopen(urllib.request.Request(f'https://query1.finance.yahoo.com/v8/finance/chart/{code}{suf}?interval={iv}&range={rng}',headers=UA),timeout=20) as rr: j=json.loads(rr.read().decode())
         except Exception: continue
         r=(j.get('chart') or {}).get('result')
         if not r or not r[0].get('timestamp'): continue
@@ -73,8 +74,21 @@ def yahoo_60m(code,d0,iv='60m',rng='730d'):
 if __name__=='__main__' and '--intraday' in sys.argv:
     L=pd.read_csv('data/ipo/list38.csv',dtype={'code':str})
     todo=L[L.code.notna()&(L.date>='2024-11-06')&(L.date<=time.strftime('%Y-%m-%d'))&~L.name.str.contains('스팩|리츠')]
-    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:yahoo_60m(r.code,r.date),todo.itertuples()))
+    skip=lambda c,iv:os.path.exists(f'data/ipo/{c}_{iv}.csv')       # 이미 받은 종목은 건너뜀(야후 요청 수 줄이기)
+    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:(r.code,1,'') if skip(r.code,'60m') else yahoo_60m(r.code,r.date),todo.itertuples()))
     print('60분봉 상장일 있음',sum(1 for _,n,_ in res if n>0),'/',len(res))
     t5=todo[todo.date>=(pd.Timestamp.today()-pd.Timedelta(days=58)).strftime('%Y-%m-%d')]   # 5분봉은 최근 60일만
-    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:yahoo_60m(r.code,r.date,'5m','60d'),t5.itertuples()))
+    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:(r.code,1,'') if skip(r.code,'5m') else yahoo_60m(r.code,r.date,'5m','60d'),t5.itertuples()))
     print('5분봉 상장일 있음',sum(1 for _,n,_ in res if n>0),'/',len(res))
+    with ThreadPoolExecutor(4) as ex: res=list(ex.map(lambda r:(r.code,1,'') if skip(r.code,'2m') else yahoo_60m(r.code,r.date,'2m','60d'),t5.itertuples()))
+    print('2분봉 상장일 있음',sum(1 for _,n,_ in res if n>0),'/',len(res))
+    # 네이버 1분봉(약 5거래일 보관) — 손절·익절 중 먼저 닿은 쪽 확인용
+    import json
+    t1=todo[todo.date>=(pd.Timestamp.today()-pd.Timedelta(days=10)).strftime('%Y-%m-%d')]; n1=0
+    for r in t1.itertuples():
+        ymd=r.date.replace('-','')
+        try: arr=json.loads(get(f'https://api.stock.naver.com/chart/domestic/item/{r.code}/minute?startDateTime={ymd}0900&endDateTime={ymd}1530','utf-8'))
+        except Exception: continue
+        if arr:
+            pd.DataFrame([{'t':pd.to_datetime(x['localDateTime'],format='%Y%m%d%H%M%S'),'o':x['openPrice'],'h':x['highPrice'],'l':x['lowPrice'],'c':x['currentPrice']} for x in arr]).to_csv(f'data/ipo/{r.code}_1m.csv',index=False); n1+=1
+    print('네이버 1분봉 상장일 있음',n1,'/',len(t1))

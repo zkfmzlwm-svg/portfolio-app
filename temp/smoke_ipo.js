@@ -45,6 +45,26 @@ ok(t.fill&&t.how==='close'&&t.xp===9940&&near(t.ret,run('dtNetRet(15890,9940,fal
 t=run(`ipoSettle(__it,{o:12400,h:13000,l:12000,c:12100},null,{n:1.0,x:2,exit:'close',fee:0.015})`);
 ok(t.fill&&t.ent===12400&&t.lim===12400,'시초가 = 지정가 → 체결');
 
+// 2-2. 익절 +3%·손절 −3% 동시 주문 (시초가 15,890 → 익절 16,370(체결 조건 16,380) · 손절 15,410(체결 15,400))
+const br=`{n:1.5,x:3,sl:3,exit:'t10',fee:0.015,amt:1000000}`;
+ok(run('ipoStop(15890,3)')===15410&&run('ipoTarget(15890,12400,3)')===16370,'손절가 호가 내림 · 익절가 호가 올림');
+t=run(`ipoSettle(__it,{o:15890,h:21000,l:9000,c:9940},{src:'1m',open:15890,bars:[{o:15890,h:20000,l:15790,c:19750},{o:19750,h:20700,l:9000,c:9000}]},${br})`);
+ok(t.how==='tp'&&t.xp===16370&&!t.amb&&t.stop===15410&&t.sl===3,'익절가가 먼저 → 익절 (뒤 봉 급락은 무관)');
+t=run(`ipoSettle(__it,{o:15890,h:21000,l:9000,c:9940},{src:'1m',open:15890,bars:[{o:15890,h:16000,l:15300,c:15500},{o:15500,h:17000,l:15400,c:16900}]},${br})`);
+ok(t.how==='sl'&&t.xp===15400&&!t.amb&&near(t.ret,run('dtNetRet(15890,15400,false,0.015)')),'손절가가 먼저 → 손절가 − 1호가(15,400)');
+t=run(`ipoSettle(__it,{o:15890,h:21000,l:9000,c:9940},{src:'1m',open:15890,bars:[{o:15890,h:17000,l:15000,c:16000}]},${br})`);
+ok(t.how==='sl'&&t.amb===true&&t.xp===15400&&near(t.retOpt,run('dtNetRet(15890,16370,false,0.015)')),'같은 봉 둘 다 → 손절로 기록 + 익절이었을 값(retOpt)');
+t=run(`ipoSettle(__it,{o:15890,h:21000,l:9000,c:9940},{src:'1m',open:15890,bars:[{o:15890,h:16100,l:15600,c:15600},{o:15200,h:15300,l:15100,c:15200}]},${br})`);
+ok(t.how==='sl'&&t.xp===15190,'다음 봉이 손절가 아래에서 시작(갭) → 그 시가 − 1호가');
+t=run(`ipoSettle(__it,{o:15890,h:21000,l:9000,c:9940},{src:'1m',open:15890,bars:[{o:15890,h:16300,l:15500,c:16000},{o:16000,h:16200,l:15600,c:15900}]},${br})`);
+ok(t.how==='t10'&&t.xp===15900,'10:00까지 둘 다 안 닿음 → 10시 시장가');
+t=run(`ipoSettle(__it,{o:15890,h:20700,l:9900,c:9940},null,${br})`);
+ok(t.how==='sl'&&t.amb&&t.src==='1d','일봉 근사: 고가·저가 둘 다 닿으면 손절로 기록(순서 불명)');
+t=run(`ipoSettle(__it,{o:15890,h:20700,l:15500,c:16000},null,${br})`);
+ok(t.how==='tp'&&!t.amb,'일봉: 저가가 손절가 위면 익절');
+t=run(`ipoSettle(__it,{o:39500,h:40000,l:39000,c:39800},null,{n:4,x:3,sl:3,exit:'close',fee:0.015})`);
+ok(t.fill===false||t.tgt<=12400*4,'익절가는 상한가 이하');
+
 // 3. 38커뮤니케이션 표 파싱 (예정·스팩·리츠·코드 없음)
 const row=(n,d,offer,code)=>`<tr bgColor="#FFFFFF"><td height=30><a href="./?o=v&amp;no=1"><font color="0066CC">${n}</font></a></td><td align="center">${d}</td><td>-&nbsp;</td><td>%</td><td align="RIGHT">${offer}&nbsp;</td><td>-%</td><td>-&nbsp;</td><td>%</td><td>예정&nbsp;</td><td>${code?`<a href='/chart/chart_page_new.php3?code=${code}'>`:''}</td></tr>`;
 sandbox.__h=`<table summary="신규상장종목"><thead><tr><th>기업명</th></tr></thead><tbody>${row('옵토닉스','2026/11/17','12,000','493260')}${row('아이엠스팩1호','2026/11/04','2,000','0222E0')}${row('삼성FN리츠(유가)','2026/11/03','5,000','448730')}${row('코드없음','2026/11/02','9,000','')}${row('래블업','2026/11/03','19,000','0147B0')}</tbody></table><table>`;
@@ -72,25 +92,25 @@ let s=run('ipoState()');
 ok(s.start==='2026-10-05'&&s.cal.length===6&&s.calAt>0,'처음 켤 때 최근 30일부터 · 일정 저장');
 ok(s.trades.length===2&&s.trades.map(x=>x.code).sort().join()==='0147B0,111111','09:30: 어제·지난 상장만 확정, 오늘 상장 대기, 스팩·시작일 이전 제외');
 const lb=s.trades.find(x=>x.code==='0147B0');
-ok(lb.fill&&lb.ent===19000&&lb.tgt===19380&&lb.how==='t10'&&lb.xp===17900&&lb.src==='1m','래블업: +2% 19,380 못 닿음(고가 19,300 < 19,390) → 09:59 종가 17,900 시간 손절');
+ok(lb.fill&&lb.ent===19000&&lb.tgt===19570&&lb.stop===18430&&lb.how==='sl'&&lb.xp===17990&&lb.src==='1m','래블업: 익절 19,570 못 닿고 09:59 봉이 18,000(손절가 18,430 아래)에서 시작 → 17,990 손절');
 const old=s.trades.find(x=>x.code==='111111');
-ok(old.fill&&old.src==='1d'&&old.how==='tp'&&old.xp===10200,'1분봉·60분봉 없는 지난 종목 → 일봉 근사');
+ok(old.fill&&old.src==='1d'&&old.how==='sl'&&old.amb&&old.xp===9690&&near(old.retOpt,run('dtNetRet(10000,10300,false,0.015)')),'1분봉·60분봉 없는 지난 종목 → 일봉 근사(둘 다 닿음 → 손절로 기록)');
 // 10:05 — 오늘 1분봉이 09:59까지 들어오면 확정
 sandbox.__minute['495910'].push(mb('20261104','0959',15950,16000,15920));
 setNow('2026-11-04',10,5);
 await run('ipoRefresh(true)');
 s=run('ipoState()');
 const es=s.trades.find(x=>x.code==='495910');
-ok(s.trades.length===3&&es&&es.fill&&es.how==='tp'&&es.tgt===16210&&es.src==='1m','10:05: 오늘 상장 이에스티 1분봉으로 익절 확정');
+ok(s.trades.length===3&&es&&es.fill&&es.how==='tp'&&es.tgt===16370&&!es.amb&&es.src==='1m','10:05: 오늘 상장 이에스티 1분봉으로 익절 확정(첫 분 저가 15,890 > 손절가)');
 await run('ipoRefresh(true)');ok(run('ipoState().trades.length')===3,'다시 갱신해도 중복 없음');
 // 60분봉 대체: 1분봉 없는 날
 run("portfolio.dt.ipo.trades=portfolio.dt.ipo.trades.filter(x=>x.code!=='0147B0')");
 delete sandbox.__minute['0147B0'];
 const ts=Math.floor(Date.UTC(2026,10,3,0,0)/1000);   // 09:00 KST
-sandbox.__hour['0147B0']={chart:{result:[{timestamp:[ts-86400,ts],indicators:{quote:[{open:[1,19000],high:[1,19500],low:[1,18000],close:[1,18100]}]}}]}};
+sandbox.__hour['0147B0']={chart:{result:[{timestamp:[ts-86400,ts],indicators:{quote:[{open:[1,19000],high:[1,19600],low:[1,18800],close:[1,19100]}]}}]}};
 await run('ipoRefresh(true)');
 const lb2=run("ipoState().trades.find(x=>x.code==='0147B0')");
-ok(lb2&&lb2.src==='60m'&&lb2.how==='tp'&&lb2.xp===19380,'1분봉 없으면 야후 60분봉 첫 봉(고가 19,500 ≥ 19,390) 익절');
+ok(lb2&&lb2.src==='60m'&&lb2.how==='tp'&&lb2.xp===19570,'1분봉 없으면 야후 60분봉 첫 봉(고가 19,600 ≥ 19,580, 저가 18,800 > 손절가) 익절');
 // 시가가 일봉과 다른 60분봉은 버리고 일봉 근사
 run("portfolio.dt.ipo.trades=portfolio.dt.ipo.trades.filter(x=>x.code!=='0147B0')");
 sandbox.__hour['0147B0'].chart.result[0].indicators.quote[0].open[1]=18000;
@@ -102,7 +122,7 @@ setNow('2026-11-04',15,0);await run('ipoRefresh(true)');
 ok(!run("ipoState().trades.some(x=>x.code==='495910')"),'종가 모드: 15:40 전 대기');
 setNow('2026-11-04',15,45);await run('ipoRefresh(true)');
 const ec=run("ipoState().trades.find(x=>x.code==='495910')");
-ok(ec&&ec.exit==='close'&&ec.how==='tp'&&ec.src==='1d','종가 모드: 15:45 확정(일봉 고가로 익절)');
+ok(ec&&ec.exit==='close'&&ec.how==='sl'&&ec.amb&&ec.src==='1d','종가 모드: 15:45 확정(일봉 — 둘 다 닿아 손절로 기록)');
 run("portfolio.dt.ipo.exit='t10'");
 // 끄면 갱신 안 함
 sandbox.__calls.length=0;run("portfolio.dt.ipo.on=false");await run('ipoRefresh(true)');
@@ -114,27 +134,35 @@ ok(run('ipoState().cal.length')===6&&/불러오지 못했습니다/.test(run('ip
 // 5. 통계·화면
 setNow('2026-11-05',8,40);
 const st=run('ipoStats(ipoState().trades)');
-ok(st.n===3&&st.nofill===0&&st.tp===1&&clean(JSON.stringify(st)),'통계: 체결·익절률');
+ok(st.n===3&&st.nofill===0&&st.tp===0&&st.slr===1&&st.amb===3&&st.avgOpt>st.avg&&clean(JSON.stringify(st)),'통계: 익절·손절률 · 동시 도달 건수 · 낙관 평균');
 run("ipoErr=null");
 const sc=run('ipoSignalCard()');
 ok(clean(sc)&&sc.includes('모의매매 전용')&&sc.includes('옵토닉스')&&sc.includes('지정가 18,000')&&!sc.includes('아이엠스팩')&&!sc.includes('dtOrder'),'신호 화면: 다가오는 상장 · 지정가 · 스팩 제외 · 주문 버튼 없음');
 const pv=run('ipoPaperView()');
-ok(clean(pv)&&pv.includes('신규상장 모의매매')&&pv.includes('래블업')&&pv.includes('익절')&&pv.includes('일봉 근사')&&pv.includes('백테스트 기대치'),'모의매매 화면: 장부·출처 표시');
+ok(clean(pv)&&pv.includes('신규상장 모의매매')&&pv.includes('래블업')&&pv.includes('손절')&&pv.includes('일봉 근사')&&pv.includes('손절로 셌습니다')&&pv.includes('−3% 손절 동시 주문')&&pv.includes('백테스트 기대치'),'모의매매 화면: 장부·출처·동시 도달 안내');
 const cf=run('ipoCfgCard()');
-ok(clean(cf)&&cf.includes('dtIpoN')&&cf.includes('10:00 시장가 (권장)'),'설정 카드');
+ok(clean(cf)&&cf.includes('dtIpoN')&&cf.includes('dtIpoS')&&cf.includes('value="3"')&&cf.includes('10:00 시장가 (권장)'),'설정 카드: 익절·손절 입력');
 run("dtSub='paper';tab='daytrade';render()");ok(clean(run("document.getElementById('app').innerHTML")),'단타 탭 모의매매 렌더');
 run("dtSub='signal';render()");ok(clean(run("document.getElementById('app').innerHTML")),'단타 탭 신호 렌더');
 run("dtSub='cfg';render()");const cfgHtml=run("document.getElementById('app').innerHTML");ok(clean(cfgHtml)&&cfgHtml.includes('모의 전용'),'단타 탭 설정 렌더');
 // 설정 저장·검증
-sandbox.document.getElementById('dtIpoN').value='5';sandbox.document.getElementById('dtIpoX').value='2';alerts.length=0;run('ipoSaveNum()');
-ok(alerts.length===1&&run('ipoState().n')===1.5,'N 범위 밖(5) 거부');
-sandbox.document.getElementById('dtIpoN').value='1.2';sandbox.document.getElementById('dtIpoX').value='3';run('ipoSaveNum()');
-ok(run('ipoState().n')===1.2&&run('ipoState().x')===3,'N·x 저장');
+const setv=(n,x,sl)=>{sandbox.document.getElementById('dtIpoN').value=n;sandbox.document.getElementById('dtIpoX').value=x;sandbox.document.getElementById('dtIpoS').value=sl;};
+setv('5','3','3');alerts.length=0;run('ipoSaveNum()');ok(alerts.length===1&&run('ipoState().n')===1.5,'N 범위 밖(5) 거부');
+setv('1.5','3','45');alerts.length=0;run('ipoSaveNum()');ok(alerts.length===1&&run('ipoState().sl')===3,'손절 40% 이상 거부');
+setv('1.2','4','2.5');run('ipoSaveNum()');ok(run('ipoState().n')===1.2&&run('ipoState().x')===4&&run('ipoState().sl')===2.5,'N·익절·손절 저장');
+setv('1.2','4','0');run('ipoSaveNum()');ok(run('ipoState().sl')===0&&run('ipoRuleText(ipoState())').includes('손절 없음'),'손절 0 = 없음');
 run("ipoSet('exit','close')");ok(run('ipoState().exit')==='close','청산 방식 저장');
 run("ipoSet('on','0')");ok(run('ipoState().on')===false&&run('ipoSignalCard()')==='','끄기 → 신호 카드 숨김');
 // 저장·복원: portfolio JSON에 포함
 ok(JSON.parse(sandbox.localStorage._d.porto).dt.ipo.trades.length===3,'기록이 저장소에 남음');
 run("ipoReset()");ok(run('ipoState().trades.length')===0&&run('ipoState().start')==='2026-10-06','초기화: 기록 삭제 · 최근 30일부터');
+
+// 6. v6.8 내부 교체: 익절만(+2%) 쓰던 상태 → 익절 +3%·손절 −3%, 기록 다시 계산(1회)
+run("portfolio.dt.ipo={on:true,n:1.5,x:2,exit:'t10',start:'2026-09-01',cal:[],calAt:0,trades:[{key:'a|2026-10-01',fill:true,ret:0.01}]}");
+let ms=run('ipoState()');
+ok(ms.x===3&&ms.sl===3&&ms.trades.length===0&&ms.start==='2026-10-06'&&ms.bracketV1===true,'익절만 쓰던 상태 → ±3%로 교체 · 기록 비우고 최근 30일부터');
+run("portfolio.dt.ipo.x=5;portfolio.dt.ipo.sl=0");ms=run('ipoState()');ok(ms.x===5&&ms.sl===0,'교체 후 사용자가 바꾼 값(손절 0 포함)은 유지');
+ok(run("JSON.parse(JSON.stringify(IPO_DEFAULT)).x")===3&&run("IPO_DEFAULT.sl")===3,'기본값 ±3%');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

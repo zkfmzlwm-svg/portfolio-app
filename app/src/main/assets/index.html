@@ -2513,15 +2513,17 @@ function dtRender(){
   render();
   const sc2=document.getElementById('dtScroll');if(sc2&&top)sc2.scrollTop=top;
 }
-// ── 🆕 신규상장 모의매매 (v6.8, 실제 주문 없음) — 근거 analysis/daytrade/ipo_tp.py·ipo_intraday.py ──
+// ── 🆕 신규상장 모의매매 (v6.8, 실제 주문 없음) — 근거 analysis/daytrade/ipo_tp.py·ipo_intraday.py·ipo_bracket.py ──
 // 규칙: 상장일 08:30~09:00 동시호가에 지정가 = 공모가 × N(호가 내림). 시초가 ≤ 지정가면 시초가 체결, 아니면 미체결(09:00 취소)
-//       체결 즉시 지정가 매도 = 시초가 × (1 + x%)(호가 올림, 상장일 상한가 = 공모가 × 4를 넘으면 상한가)
-//       10:00까지 못 팔면 시장가 매도(시간 손절) 또는 당일 종가 매도. 시초가 = 상한가면 미체결로 본다
-// 익절 판정은 보수: 고가 ≥ 목표가 + 1호가(목표가 = 상한가면 고가 ≥ 상한가)
-// 장중 경로: 네이버 1분봉(약 5거래일 보관) → 야후 60분봉(약 2년) → 없으면 일봉 근사(고가로 익절, 못 닿으면 종가)
-// 백테스트(2023-06~2026-11, 일반 공모 252건): N 1.5 · +2% · 못 팔면 종가 = 체결 107건, 거래당 +0.29%, 익절 94%, 못 판 날 −25.6%
-//   60분봉 39건: 10:00 시간 손절 +0.33%(못 판 날 −27.5%). 연도별 부호가 바뀌어 기대값은 0 근처 → 실매매 대신 기록으로 확인
-const IPO_DEFAULT={on:true,n:1.5,x:2,exit:'t10',start:null,cal:[],calAt:0,trades:[]};
+//       체결 즉시 익절 +x%·손절 −y%를 동시에 건다(OCO, 사용자 요청 기본 ±3%). 익절가는 호가 올림·상한가(공모가 × 4) 이하,
+//       손절가는 시초가 × (1 − y%) 호가 내림. 둘 다 안 닿으면 10:00 시장가(시간 손절) 또는 당일 종가. 시초가 = 상한가면 미체결
+// 체결 판정은 보수: 익절 = 고가 ≥ 목표가 + 1호가, 손절 = 저가 ≤ 손절가 → 손절가 − 1호가(봉 시가가 이미 아래면 그 시가 − 1호가)
+//   같은 봉에서 둘 다 닿으면 순서를 모름 → 손절로 기록(ret)하고, 익절이었을 때 값(retOpt)도 함께 남긴다
+// 장중 경로: 네이버 1분봉(약 5거래일 보관) → 야후 60분봉(약 2년) → 없으면 일봉 근사
+// 백테스트(2023-06~2026-11, 일반 공모, N 1.5 · ±3%): 같은 봉 동시 도달 일봉 78% · 60분봉 69% · 1~2분봉 40% →
+//   거래당 비관(손절 먼저) −2.88% ~ 낙관(익절 먼저) +1.94% (일봉 107건), 최악 −3.6%로 손실은 제한(손절 없으면 최악 −39.7%)
+//   1·2분봉 11건(N 4): −0.96~+0.52%(비관) · +1.54~+2.25%(낙관). 실매매 대신 기록으로 확인
+const IPO_DEFAULT={on:true,n:1.5,x:3,sl:3,exit:'t10',start:null,cal:[],calAt:0,trades:[],bracketV1:true};
 const IPO_URL='http://www.38.co.kr/html/fund/index.htm?o=nw&page=';   // https는 서버 DH 키가 약해 실패 → http
 let ipoBusy=false,ipoErr=null;const ipoTry={};
 function ipoState(){
@@ -2530,13 +2532,16 @@ function ipoState(){
   const s=dt.ipo;
   if(!Array.isArray(s.cal))s.cal=[];
   if(!Array.isArray(s.trades))s.trades=[];
-  if(!(s.n>0))s.n=IPO_DEFAULT.n;if(!(s.x>0))s.x=IPO_DEFAULT.x;if(s.exit!=='close')s.exit='t10';
+  // v6.8: 익절만 걸던 방식 → 익절 +3%·손절 −3% 동시 주문(사용자 요청)으로 1회 교체하고 기록을 새 규칙으로 다시 계산
+  if(!s.bracketV1){s.x=3;s.sl=3;s.trades=[];s.start=null;s.bracketV1=true;}
+  if(!(s.n>0))s.n=IPO_DEFAULT.n;if(!(s.x>0))s.x=IPO_DEFAULT.x;if(!(s.sl>=0))s.sl=IPO_DEFAULT.sl;if(s.exit!=='close')s.exit='t10';
   if(!s.start)s.start=dtAddDays(kstYmd(),-30);   // 처음 켤 때 최근 30일 소급
   return s;
 }
 function ipoLimit(offer,n){const raw=offer*n,t=krTick(raw,false);return Math.floor(raw/t+1e-9)*t;}
 function ipoTarget(ent,offer,x){const raw=ent*(1+x/100),t=krTick(raw,false);return Math.min(Math.ceil(raw/t-1e-9)*t,offer*4);}
 function ipoNeed(T,offer){return T>=offer*4?T:T+krTick(T,false);}
+function ipoStop(ent,sl){const raw=ent*(1-sl/100),t=krTick(raw,false);return Math.floor(raw/t+1e-9)*t;}
 // 38커뮤니케이션 신규상장 표 → [{d,code,name,offer,spac,reit}] (예정 종목 포함)
 function ipoParse38(h){
   const i=String(h||'').indexOf('summary="신규상장종목"');if(i<0)return [];
@@ -2562,8 +2567,8 @@ async function ipoFetchMinute(code,d){
   const ymd=d.replace(/-/g,'');
   const arr=await nativeGet('https://api.stock.naver.com/chart/domestic/item/'+code+'/minute?startDateTime='+ymd+'0900&endDateTime='+ymd+'1000');
   if(!Array.isArray(arr))return null;
-  const bars=arr.map(x=>({t:String(x.localDateTime||''),o:+x.openPrice,h:+x.highPrice,c:+x.currentPrice}))
-    .filter(b=>b.t.slice(0,8)===ymd&&b.t.slice(8,12)<'1000'&&b.h>0&&b.c>0);
+  const bars=arr.map(x=>({t:String(x.localDateTime||''),o:+x.openPrice,h:+x.highPrice,l:+x.lowPrice,c:+x.currentPrice}))
+    .filter(b=>b.t.slice(0,8)===ymd&&b.t.slice(8,12)<'1000'&&b.h>0&&b.l>0&&b.c>0);
   return bars.length?{src:'1m',open:bars[0].o,bars,full:bars[bars.length-1].t.slice(8,12)>='0959'}:null;
 }
 // 야후 60분봉 첫 봉(09:00~10:00)
@@ -2575,27 +2580,35 @@ async function ipoFetchHour(code,d){
     const q=(r.indicators&&r.indicators.quote&&r.indicators.quote[0])||{};
     for(let i=0;i<r.timestamp.length;i++){
       const k=new Date((r.timestamp[i]+9*3600)*1000).toISOString();
-      if(k.slice(0,10)===d&&k.slice(11,13)==='09'&&q.high&&q.high[i]>0&&q.close[i]>0)
-        return{src:'60m',open:q.open[i],bars:[{h:q.high[i],c:q.close[i]}],full:true};
+      if(k.slice(0,10)===d&&k.slice(11,13)==='09'&&q.high&&q.high[i]>0&&q.low&&q.low[i]>0&&q.close[i]>0)
+        return{src:'60m',open:q.open[i],bars:[{o:q.open[i],h:q.high[i],l:q.low[i],c:q.close[i]}],full:true};
     }
     return null;
   }
   return null;
 }
-// 체결·청산 판정 (순수 함수) — it {d,code,name,offer}, day {o,h,c}, path {src,bars:[{h,c}]} 또는 null
+// 체결·청산 판정 (순수 함수) — it {d,code,name,offer}, day {o,h,l,c}, path {src,bars:[{o,h,l,c}] 09:00~09:59 시간순} 또는 null
+// opt {n,x,sl(0 = 손절 없음),exit,fee,amt}
 function ipoSettle(it,day,path,opt){
-  const P=day.o,cap=it.offer*4,L=ipoLimit(it.offer,opt.n);
-  const t={key:it.code+'|'+it.d,d:it.d,code:it.code,name:it.name,offer:it.offer,lim:L,ent:P,ratio:P/it.offer,n:opt.n,x:opt.x,exit:opt.exit,amt:opt.amt};
+  const P=day.o,cap=it.offer*4,L=ipoLimit(it.offer,opt.n),sl=opt.sl>0?opt.sl:0;
+  const t={key:it.code+'|'+it.d,d:it.d,code:it.code,name:it.name,offer:it.offer,lim:L,ent:P,ratio:P/it.offer,n:opt.n,x:opt.x,sl,exit:opt.exit,amt:opt.amt};
   if(P>=cap*0.9999)return Object.assign(t,{fill:false,why:'상한가 시작'});
   if(P>L)return Object.assign(t,{fill:false,why:'시초가 '+(P/it.offer).toFixed(2)+'배 > '+opt.n+'배'});
-  const T=ipoTarget(P,it.offer,opt.x),need=ipoNeed(T,it.offer);
-  let xp,how,src;
-  if(opt.exit==='t10'&&path&&path.bars.length){
-    src=path.src;const hit=path.bars.some(b=>b.h>=need);xp=hit?T:path.bars[path.bars.length-1].c;how=hit?'tp':'t10';
-  }else{
-    src='1d';const hit=day.h>=need;xp=hit?T:day.c;how=hit?'tp':'close';
+  const T=ipoTarget(P,it.offer,opt.x),need=ipoNeed(T,it.offer),S=sl?ipoStop(P,sl):null;
+  const useP=opt.exit==='t10'&&path&&path.bars.length;
+  const bars=useP?path.bars:[{o:P,h:day.h,l:day.l>0?day.l:Math.min(P,day.c),c:day.c}];
+  let r=null;
+  for(let i=0;i<bars.length&&!r;i++){
+    const b=bars[i],th=b.h>=need,sh=S!=null&&b.l<=S;
+    let sf=null;if(sh){const g=i>0&&b.o>0&&b.o<S?b.o:S;sf=g-krTick(g,false);}   // 손절은 시장가 매도 → 1호가 아래 체결
+    if(th&&sh)r={how:'sl',xp:sf,amb:true};          // 같은 봉 동시 도달 → 손절로 기록(보수)
+    else if(th)r={how:'tp',xp:T};
+    else if(sh)r={how:'sl',xp:sf};
   }
-  return Object.assign(t,{fill:true,tgt:T,xp,how,src,ret:dtNetRet(P,xp,false,opt.fee)});
+  if(!r)r={how:useP?'t10':'close',xp:bars[bars.length-1].c};
+  const o={fill:true,tgt:T,stop:S,xp:r.xp,how:r.how,src:useP?path.src:'1d',ret:dtNetRet(P,r.xp,false,opt.fee)};
+  if(r.amb){o.amb=true;o.retOpt=dtNetRet(P,T,false,opt.fee);}
+  return Object.assign(t,o);
 }
 async function ipoRefresh(force){
   const s=ipoState();
@@ -2625,7 +2638,7 @@ async function ipoRefresh(force){
         if(path&&!(path.open>0&&Math.abs(path.open/day.o-1)<=0.005))path=null;   // 시가가 일봉과 다르면 쓰지 않음
         if(!path&&it.d===today)continue;
       }else if(it.d===today&&hm<1540)continue;
-      s.trades.push(ipoSettle(it,day,path,{n:s.n,x:s.x,exit:s.exit,fee:dtState().fee,amt:dtState().amt}));
+      s.trades.push(ipoSettle(it,day,path,{n:s.n,x:s.x,sl:s.sl,exit:s.exit,fee:dtState().fee,amt:dtState().amt}));
       delete ipoTry[key];changed=true;
     }
     ipoErr=null;
@@ -2634,14 +2647,17 @@ async function ipoRefresh(force){
   if(changed)save();
   if(changed&&tab==='daytrade')dtRender();
 }
+// avg = 같은 봉 동시 도달을 손절로 본 값(보수), avgOpt = 익절로 본 값
 function ipoStats(list){
   const f=list.filter(t=>t.fill),n=f.length;
   if(!n)return{n:0,nofill:list.length};
-  return{n,nofill:list.length-n,tp:f.filter(t=>t.how==='tp').length/n,win:f.filter(t=>t.ret>0).length/n,
-    avg:f.reduce((a,t)=>a+t.ret,0)/n*100,pnl:f.reduce((a,t)=>a+t.ret*(t.amt||dtState().amt),0)};
+  const amt=t=>t.amt||dtState().amt,opt=t=>t.amb&&t.retOpt!=null?t.retOpt:t.ret;
+  return{n,nofill:list.length-n,tp:f.filter(t=>t.how==='tp').length/n,slr:f.filter(t=>t.how==='sl').length/n,amb:f.filter(t=>t.amb).length,
+    win:f.filter(t=>t.ret>0).length/n,avg:f.reduce((a,t)=>a+t.ret,0)/n*100,avgOpt:f.reduce((a,t)=>a+opt(t),0)/n*100,
+    pnl:f.reduce((a,t)=>a+t.ret*amt(t),0),pnlOpt:f.reduce((a,t)=>a+opt(t)*amt(t),0)};
 }
-const IPO_HOW={tp:'익절',t10:'10시 매도',close:'종가 매도'},IPO_SRC={'1m':'1분봉','60m':'60분봉','1d':'일봉 근사'};
-function ipoRuleText(s){return `공모가 × ${s.n} 지정가 매수 · 시초가 +${s.x}% 익절 · 못 팔면 ${s.exit==='t10'?'10:00 시장가':'당일 종가'}`;}
+const IPO_HOW={tp:'익절',sl:'손절',t10:'10시 매도',close:'종가 매도'},IPO_SRC={'1m':'1분봉','60m':'60분봉','1d':'일봉 근사'};
+function ipoRuleText(s){return `공모가 × ${s.n} 지정가 매수 · 시초가 +${s.x}% 익절${s.sl>0?` / −${s.sl}% 손절 동시 주문`:' (손절 없음)'} · ${s.sl>0?'둘 다 안 닿으면':'못 팔면'} ${s.exit==='t10'?'10:00 시장가':'당일 종가'}`;}
 // 신호·주문 화면: 다가오는 상장 (모의 기록만, 주문 버튼 없음)
 function ipoSignalCard(){
   const s=ipoState();
@@ -2664,15 +2680,16 @@ function ipoPaperView(){
   const stat=(l,v,c)=>`<div style="text-align:center;flex:1"><div style="font-size:10px;color:${T.text3};margin-bottom:3px">${l}</div><div class="mono" style="font-size:14px;font-weight:700;color:${c||T.text}">${v}</div></div>`;
   const row=t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid ${T.border}">
       <div><div style="font-size:13px;color:${T.text}">${esc(t.name)} <span style="font-size:10px;color:${T.text3}">시초 ${t.ratio.toFixed(2)}배</span></div>
-        <div class="mono" style="font-size:10px;color:${T.text3}">${t.d.slice(5)} ${t.fill?`${won(t.ent)} → ${won(t.xp)} · ${IPO_HOW[t.how]} · ${IPO_SRC[t.src]}`:`미체결 · ${esc(t.why)}`}</div></div>
-      <div class="mono" style="font-size:13px;font-weight:700;color:${t.fill?pctC(t.ret):T.text3}">${t.fill?pct(t.ret*100):'—'}</div></div>`;
+        <div class="mono" style="font-size:10px;color:${T.text3}">${t.d.slice(5)} ${t.fill?`${won(t.ent)} → ${won(t.xp)} · ${IPO_HOW[t.how]}${t.amb?` (같은 봉에 익절가·손절가 둘 다 → 손절로 봄, 익절이면 ${pct(t.retOpt*100)})`:''} · ${IPO_SRC[t.src]}`:`미체결 · ${esc(t.why)}`}</div></div>
+      <div class="mono" style="font-size:13px;font-weight:700;color:${t.fill?pctC(t.ret):T.text3}">${t.fill?pct(t.ret*100)+(t.amb?'*':''):'—'}</div></div>`;
   return `${secL('🆕 신규상장 모의매매 ('+s.start+'부터)')}
-    ${card(x.n?`<div style="display:flex;gap:4px">${stat('체결',x.n+'건')}${stat('익절',(x.tp*100).toFixed(0)+'%')}${stat('거래당',pct(x.avg),pctC(x.avg))}${stat('누적 손익',won(Math.round(x.pnl),true),pctC(x.pnl))}</div>
-      <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">미체결 ${x.nofill}건 · 승률 ${(x.win*100).toFixed(0)}% · ${ipoRuleText(s)}<br>백테스트 기대치: 체결 비율 42%, 익절 94%, 거래당 +0.29%, 못 판 날 −25.6% (N 1.5 · +2% · 종가, 2023-06~2026-11) · 10:00 시간 손절 +0.33% (60분봉 39건)</div>`
+    ${card(x.n?`<div style="display:flex;gap:4px">${stat('체결',x.n+'건')}${stat('익절 / 손절',(x.tp*100).toFixed(0)+' / '+(x.slr*100).toFixed(0)+'%')}${stat('거래당',pct(x.avg),pctC(x.avg))}${stat('누적 손익',won(Math.round(x.pnl),true),pctC(x.pnl))}</div>
+      ${x.amb?`<div style="font-size:11px;color:${T.amber};margin-top:8px;line-height:1.6">* 같은 봉에서 익절가·손절가가 둘 다 닿은 ${x.amb}건은 손절로 셌습니다. 익절로 보면 거래당 ${pct(x.avgOpt)} · 누적 ${won(Math.round(x.pnlOpt),true)}원입니다. 실제는 그 사이입니다.</div>`:''}
+      <div style="font-size:11px;color:${T.text3};margin-top:8px;line-height:1.6">미체결 ${x.nofill}건 · 승률 ${(x.win*100).toFixed(0)}% · ${ipoRuleText(s)}<br>백테스트 기대치(N 1.5 · ±3%, 2023-06~2026-11): 체결 비율 42%, 같은 봉 동시 도달이 많아 거래당 −2.9%(손절 먼저) ~ +1.9%(익절 먼저), 최악 −3.6%. 손절 없이 익절만 걸면 최악 −39.7%</div>`
       :`<div style="font-size:13px;color:${T.text2};line-height:1.6">아직 모의 체결이 없습니다${x.nofill?` (미체결 ${x.nofill}건)`:''}. ${s.start} 이후 상장한 일반 공모를 자동으로 기록합니다.</div>`)}
     ${list.length?card(list.slice(0,40).map(row).join('')):''}
     <div style="display:flex;gap:8px;margin-top:8px"><button onclick="ipoReset()" class="tap" style="padding:10px;background:${T.bg3};color:${T.red};border-radius:10px;font-size:12px;font-weight:700;flex:1">신규상장 기록 초기화 (최근 30일 다시 계산)</button></div>
-    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:10px">· 실제 주문은 나가지 않습니다. 상장일 일봉과 장중 경로(1분봉 → 60분봉 → 없으면 일봉 근사)로 사후 기록합니다.<br>· 익절은 고가가 목표가 + 1호가 이상일 때만 체결로 봅니다. 시초가가 상한가(공모가 × 4)면 미체결로 봅니다.<br>· '일봉 근사'는 10시 이후 고가도 익절로 셀 수 있어 실제보다 좋게 나올 수 있습니다. 상장 후 5거래일 안에 앱을 열면 1분봉으로 정확히 기록됩니다.<br>· 수수료 편도 ${dtState().fee}%, 매도 거래세 ${DT_TAX}%를 반영합니다.</div>`;
+    <div style="font-size:11px;color:${T.text3};line-height:1.7;margin-top:10px">· 실제 주문은 나가지 않습니다. 상장일 일봉과 장중 경로(1분봉 → 60분봉 → 없으면 일봉 근사)로 사후 기록합니다.<br>· 익절은 고가가 목표가 + 1호가 이상일 때, 손절은 저가가 손절가 이하일 때 체결로 봅니다. 손절은 시장가 매도라 손절가보다 1호가 낮게 팔린 것으로 봅니다. 시초가가 상한가(공모가 × 4)면 미체결입니다.<br>· 같은 봉 안에서 둘 다 닿으면 어느 쪽이 먼저인지 알 수 없어 손절로 기록합니다(*). 1분봉이면 이런 경우가 줄고, 60분봉·일봉 근사는 대부분 여기에 해당합니다. 상장 후 5거래일 안에 앱을 열면 1분봉으로 기록됩니다.<br>· 실제 매매에서 손절(−${s.sl}%)은 지정가로 미리 걸 수 없어 증권사 자동감시(스톱) 주문이나 앱 감시가 필요합니다.<br>· 수수료 편도 ${dtState().fee}%, 매도 거래세 ${DT_TAX}%를 반영합니다.</div>`;
 }
 function ipoCfgCard(){
   const s=ipoState(),sbtn=`padding:10px 16px;background:${T.teal};color:#000;border-radius:10px;font-weight:700`;
@@ -2680,12 +2697,13 @@ function ipoCfgCard(){
   const tg=(k,v,l,on)=>`<button onclick="ipoSet('${k}','${v}')" class="tap" style="flex:1;padding:9px 2px;border-radius:10px;font-size:12px;font-weight:700;background:${on?T.teal:T.bg3};color:${on?'#000':T.text2}">${l}</button>`;
   return `${secL('🆕 신규상장 모의매매 (실제 주문 없음)')}
     ${card(`${lab('기록',true)}<div style="display:flex;gap:6px">${tg('on','1','켜기',s.on)}${tg('on','0','끄기',!s.on)}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div>${lab('지정가 = 공모가 × N')}<input id="dtIpoN" type="number" step="0.1" value="${s.n}"></div>
-        <div>${lab('익절 = 시초가 + x%')}<input id="dtIpoX" type="number" step="0.5" value="${s.x}"></div></div>
-      ${lab('못 팔면')}<div style="display:flex;gap:6px">${tg('exit','t10','10:00 시장가 (권장)',s.exit==='t10')}${tg('exit','close','당일 종가',s.exit==='close')}</div>
-      <button onclick="ipoSaveNum()" class="tap" style="${sbtn};width:100%;margin-top:10px">N·x 저장</button>
-      <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 바꾼 설정은 아직 기록되지 않은 상장일부터 적용됩니다. 지난 기록에 적용하려면 모의매매 탭에서 초기화하세요.<br>· 백테스트(일반 공모 252건): N 1.5 · +2%가 가장 나았고(거래당 +0.29%), N을 키우거나 x를 키우면 손실이 커졌습니다(N 4 · +5% −4.1%). 스팩·리츠는 제외합니다.</div>`)}`;
+        <div>${lab('익절 + x%')}<input id="dtIpoX" type="number" step="0.5" value="${s.x}"></div>
+        <div>${lab('손절 − y% (0 = 없음)')}<input id="dtIpoS" type="number" step="0.5" value="${s.sl}"></div></div>
+      ${lab('둘 다 안 닿으면')}<div style="display:flex;gap:6px">${tg('exit','t10','10:00 시장가 (권장)',s.exit==='t10')}${tg('exit','close','당일 종가',s.exit==='close')}</div>
+      <button onclick="ipoSaveNum()" class="tap" style="${sbtn};width:100%;margin-top:10px">N·익절·손절 저장</button>
+      <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 익절·손절은 시초가 기준이고 체결 즉시 동시에 겁니다(먼저 닿는 쪽 체결, 다른 쪽 취소).<br>· 바꾼 설정은 아직 기록되지 않은 상장일부터 적용됩니다. 지난 기록에 적용하려면 모의매매 탭에서 초기화하세요.<br>· 백테스트(일반 공모, N 1.5): ±3%는 거래당 −2.9% ~ +1.9%(같은 봉 순서에 따라), 최악 −3.6%. 익절만(+3%)은 −1.00%, 최악 −39.7%. 스팩·리츠는 제외합니다.</div>`)}`;
 }
 function ipoSet(k,v){
   const s=ipoState();
@@ -2693,10 +2711,11 @@ function ipoSet(k,v){
   save();render();
 }
 function ipoSaveNum(){
-  const n=parseFloat(document.getElementById('dtIpoN').value),x=parseFloat(document.getElementById('dtIpoX').value);
+  const g=id=>parseFloat(document.getElementById(id).value),n=g('dtIpoN'),x=g('dtIpoX'),sl=g('dtIpoS');
   if(!(n>=0.6&&n<=4)){alert('N은 0.6~4 사이로 입력하세요 (상장일 가격 범위 = 공모가 60~400%).');return;}
-  if(!(x>0&&x<=300)){alert('x는 0보다 크고 300 이하로 입력하세요.');return;}
-  const s=ipoState();s.n=Math.round(n*100)/100;s.x=Math.round(x*100)/100;
+  if(!(x>0&&x<=300)){alert('익절 %는 0보다 크고 300 이하로 입력하세요.');return;}
+  if(!(sl>=0&&sl<40)){alert('손절 %는 0(없음) 이상 40 미만으로 입력하세요 (상장일 하한 = 공모가 60%).');return;}
+  const s=ipoState();s.n=Math.round(n*100)/100;s.x=Math.round(x*100)/100;s.sl=Math.round(sl*100)/100;
   const a=document.activeElement;if(a&&a.blur)a.blur();
   save();render();
 }
@@ -2847,7 +2866,8 @@ function dtCfgView(dt){
             ['기본 5쌍 합산','123','+0.70%','64%','1.37','−12%',1],['(참고) 에너지 포함 6쌍 (v6.7)','132','+0.68%','64%','1.28','−10%',0],
             ['XOM ≤ −4% → KODEX 에너지화학·롯데케미칼 (v6.8 제외)','8','+0.38%','60%','0.20','−14%',2],
             ['신규상장일 시가 매수 → 당일 종가 (2023-06~)','75','−10.75%','24%','—','—',3],
-            ['신규상장 공모가×1.5 지정가 + 2% 익절, 못 팔면 종가 (모의 전용)','32','+0.29%','94%','—','—',2],
+            ['신규상장 공모가×1.5 지정가 + 3% 익절·3% 손절 동시 (모의 전용)','32','−2.9~+1.9%','8~86%','—','최악 −3.6%',2],
+            ['(참고) 같은 조건, 익절 +3%만 · 손절 없음','32','−1.00%','86%','—','최악 −39.7%',3],
             ['SOXX ≥ +2% → 반도체 2종목, +0.5% 익절','71','−0.39%','66%','−2.19','−80%',3],['SPY ≥ +1% → KODEX 200·코스닥150, +0.5% 익절','65','−0.13%','60%','−0.95','−40%',3],
             ['XLE ≤ −3% → SK이노베이션·S-Oil','21','−0.01%','49%','−0.01','−33%',3],
             ['SOXL > 0% → 반도체 2종목, 당일 종가','273','−0.35%','39%','−2.55','−100%',3],['SOXL > +3% → 반도체 2종목, 다음날 시가','147','−0.33%','42%','−1.16','−95%',3]];
@@ -2864,7 +2884,7 @@ function dtCfgView(dt){
       <tr style="color:${T.text3}"><td style="text-align:left">신호 → 종목</td>${['연','거래당','승률','Sharpe','MDD'].map(h=>`<td style="padding-left:6px;white-space:nowrap">${h}</td>`).join('')}</tr>
       ${BT.map(r=>`<tr style="color:${[T.text2,T.teal,T.amber,T.red][r[6]]}">${r.slice(0,6).map((c,j)=>`<td style="padding:4px 0 4px ${j?6:0}px;${j?'white-space:nowrap':'text-align:left;font-family:inherit'}">${c}</td>`).join('')}</tr>`).join('')}
     </table>
-    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 급등 역추세: 미국 급등 다음날 시가에 사서 +0.5~1% 익절(못 닿으면 종가)하는 방식은 종목을 사면 전 섹터 손실(빨간 '익절' 줄)이고, 인버스 ETF로 뒤집으면 플러스입니다. 인버스 ETF 매매차익 15.4% 과세를 반영했습니다.<br>· 그 밖의 줄은 다음날 시가 매도 기준입니다. 기본 5쌍은 2014-19·2020-22·2023-26 Sharpe가 1.21·1.70·1.50으로 고르게 플러스였습니다.<br>· 바이오·2차전지는 약 700개 조합(89쌍 × 기준 8개) 중에서 고른 값이라 실제 성과는 표보다 낮을 수 있습니다.<br>· 에너지(XOM, 주황 줄)는 최신 데이터에서 t 1.0, 2014-19 손실이라 v6.8에서 뺐습니다. 빼면 합산 Sharpe가 1.28 → 1.37로 오릅니다.<br>· 신규상장일 시가 매수(2023-06 상장일 가격제한폭 개편 이후 일반 공모 252건)는 시초가가 그날 고점인 경우가 많아 거래당 −10.8%, 승률 24%였습니다. 연도별·경쟁률별·공모 규모별로 나눠도 손실이라 넣지 않았습니다(스팩은 −28.6%).<br>· 공모가 × 1.5배 지정가 매수 + 매수가 +2% 익절(주황 줄)은 익절 94%지만 못 판 날 −25.6%라 기대값이 0 근처이고 연도별 부호가 바뀝니다. 실제 주문 없이 모의매매로만 기록합니다(위 🆕 신규상장 설정).<br>· 원전·전력(URA·CCJ·ETN·VRT → 두산에너빌리티·한전기술 등)은 기간별 부호가 엇갈려 넣지 않았습니다.<br>· 같은 신호라도 당일 종가에 팔면 2023년 이후 거래당 0 근처라 다음날 시가 매도를 권장합니다.<br>· 기준을 낮추면(SOXX −2%) 신호는 두 배지만 Sharpe가 0.74로 떨어집니다.<br>· 빨간 줄(미국 상승 후 매수)은 국내 시가가 이미 올라 시작해 장중에 밀리는 탓에 손실이었습니다.</div>`)}`;
+    <div style="font-size:11px;color:${T.text3};line-height:1.6;margin-top:8px">· 급등 역추세: 미국 급등 다음날 시가에 사서 +0.5~1% 익절(못 닿으면 종가)하는 방식은 종목을 사면 전 섹터 손실(빨간 '익절' 줄)이고, 인버스 ETF로 뒤집으면 플러스입니다. 인버스 ETF 매매차익 15.4% 과세를 반영했습니다.<br>· 그 밖의 줄은 다음날 시가 매도 기준입니다. 기본 5쌍은 2014-19·2020-22·2023-26 Sharpe가 1.21·1.70·1.50으로 고르게 플러스였습니다.<br>· 바이오·2차전지는 약 700개 조합(89쌍 × 기준 8개) 중에서 고른 값이라 실제 성과는 표보다 낮을 수 있습니다.<br>· 에너지(XOM, 주황 줄)는 최신 데이터에서 t 1.0, 2014-19 손실이라 v6.8에서 뺐습니다. 빼면 합산 Sharpe가 1.28 → 1.37로 오릅니다.<br>· 신규상장일 시가 매수(2023-06 상장일 가격제한폭 개편 이후 일반 공모 252건)는 시초가가 그날 고점인 경우가 많아 거래당 −10.8%, 승률 24%였습니다. 연도별·경쟁률별·공모 규모별로 나눠도 손실이라 넣지 않았습니다(스팩은 −28.6%).<br>· 신규상장 공모가 × 1.5 지정가 + 익절 +3%·손절 −3% 동시 주문(주황 줄)은 상장 직후 1~2분 안에 두 가격을 모두 지나는 경우가 많아(일봉 78%·60분봉 69%·1~2분봉 40%) 어느 쪽이 먼저냐에 따라 거래당 −2.9% ~ +1.9%입니다. 손절 덕분에 최악은 −3.6%로 제한됩니다(익절만 걸면 −39.7%). 실제 주문 없이 모의매매로만 기록합니다(위 🆕 신규상장 설정).<br>· 원전·전력(URA·CCJ·ETN·VRT → 두산에너빌리티·한전기술 등)은 기간별 부호가 엇갈려 넣지 않았습니다.<br>· 같은 신호라도 당일 종가에 팔면 2023년 이후 거래당 0 근처라 다음날 시가 매도를 권장합니다.<br>· 기준을 낮추면(SOXX −2%) 신호는 두 배지만 Sharpe가 0.74로 떨어집니다.<br>· 빨간 줄(미국 상승 후 매수)은 국내 시가가 이미 올라 시작해 장중에 밀리는 탓에 손실이었습니다.</div>`)}`;
 }
 function dtSet(key,v){const dt=dtState();dt[key]=v;save();dtCompute();render();}
 function dtSaveNum(key,id){
