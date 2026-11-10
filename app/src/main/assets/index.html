@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v6.8.1</title>
+<title>포트폴리오 v6.9</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -2307,7 +2307,8 @@ function dtState(){
   if(!portfolio.dt||!Array.isArray(portfolio.dt.pairs)){portfolio.dt=JSON.parse(JSON.stringify(DT_DEFAULT));portfolio.dt.start=kstYmd();}
   return portfolio.dt;
 }
-const dtCache={kr:{},us:{},usAt:0,day:null,from:null,fetchHm:{},rt:{},rtAt:0,series:{},sig:{},open:{},busy:false,err:null,balBusy:false,balErr:null};
+const dtCache={kr:{},us:{},usAt:0,day:null,from:null,fetchHm:{},rt:{},rtAt:0,series:{},sig:{},open:{},busy:false,err:null,balBusy:false,balErr:null,
+  idx:{rt:{},rtAt:0,ser:{},serErr:{},busy:false,err:null}};   // idx: 지수 그래프 (v6.9)
 let dtSub='signal',dtTimer=null;
 function dtAllCodes(dt){const seen={},out=[];dt.pairs.forEach(p=>p.codes.forEach(m=>{if(!seen[m.code]){seen[m.code]=1;out.push(m);}}));return out;}
 function dtFindCode(code){
@@ -2742,11 +2743,13 @@ function dtOnShow(){
   if(!dtTimer&&typeof setInterval==='function')dtTimer=setInterval(dtTick,20000);
   if(window.HttpBridge&&window.HttpBridge.get&&!dtCache.busy&&Date.now()-dtCache.rtAt>60000)dtRefresh(true);
   if(window.HttpBridge&&window.HttpBridge.get)ipoRefresh(false);   // 종목쌍이 없어도 신규상장 기록은 갱신
+  if(window.HttpBridge&&window.HttpBridge.get)idxRefresh(false);   // 상단 지수 그래프
 }
 function dtTick(){
   if(tab!=='daytrade'){clearInterval(dtTimer);dtTimer=null;return;}
   const n=kstNow(),wd=n.getUTCDay(),hm=kstHm(n);
   if((wd>0&&wd<6&&hm>=830&&hm<=1545)||Date.now()-dtCache.usAt>600000)dtRefresh(true);
+  idxRefresh(false);   // 지수: 실시간 15초 · 장중 당일 차트 60초 · 그 밖 10분 (함수 안에서 판단)
 }
 function dtMarketLabel(){
   const r=Object.values(dtCache.rt)[0],n=kstNow(),wd=n.getUTCDay(),hm=kstHm(n);
@@ -2755,6 +2758,172 @@ function dtMarketLabel(){
   if(hm<900)return{t:'장 시작 전',c:T.amber};
   if(hm>=1530)return{t:'장 마감',c:T.text2};
   return{t:r?'휴장':'시세 없음',c:T.text3};
+}
+
+// ── 📈 지수 그래프 (v6.9) — 단타 탭 상단. 신호에 쓰는 미국 지수와 국내 지수를 한눈에 ──
+// 시세: 네이버 실시간(polling) · 국내 1분봉/일봉(api.stock.naver.com) · 미국 일봉(네이버) · 미국 당일 5분봉(야후, 네이버엔 없음)
+const IDX_LIST=[{id:'KOSPI',l:'코스피',kr:true},{id:'KOSDAQ',l:'코스닥',kr:true},
+  {id:'.INX',l:'S&P500',y:'^GSPC'},{id:'.IXIC',l:'나스닥',y:'^IXIC'},{id:'.SOX',l:'반도체',y:'^SOX'}];
+const IDX_RNG=[['1d','당일'],['1m','1개월'],['3m','3개월']];
+const idxById=id=>IDX_LIST.find(x=>x.id===id)||IDX_LIST[0];
+// 선택(지수·기간)은 기기 설정 — 백업·초기화와 무관
+function idxSel(){let s=null;try{s=JSON.parse(Store.get('dt_idx')||'null');}catch(e){}
+  return{sel:s&&IDX_LIST.some(x=>x.id===s.sel)?s.sel:'KOSPI',rng:s&&IDX_RNG.some(r=>r[0]===s.rng)?s.rng:'1d'};}
+function idxPick(k,v){const s=idxSel();s[k]=v;Store.set('dt_idx',JSON.stringify(s));dtRender();idxRefresh(false);}
+const idxFmt=v=>v==null||!isFinite(v)?'—':v.toLocaleString('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const idxKstHm=iso=>{const t=Date.parse(iso);return isNaN(t)?'':new Date(t+9*3600e3).toISOString().slice(11,16);};
+const idxKstYmd=iso=>{const t=Date.parse(iso);return isNaN(t)?'':new Date(t+9*3600e3).toISOString().slice(0,10);};
+// 네이버 실시간 → {id:{cur,chg,pct,prev,o,h,l,status,t}}. 등락 부호는 compareToPreviousPrice.code(4 하한·5 하락)로 판정
+function idxParseRt(j){
+  const out={};
+  ((j&&j.datas)||[]).forEach(x=>{
+    const id=x.itemCode||x.reutersCode;if(!id)return;
+    const cur=numK(x.closePrice);if(!(cur>0))return;
+    const code=String((x.compareToPreviousPrice||{}).code||''),neg=code==='4'||code==='5'||/^-/.test(String(x.compareToPreviousClosePrice||''));
+    const flat=code==='3',chg=flat?0:(neg?-1:1)*Math.abs(numK(x.compareToPreviousClosePrice)),pct=flat?0:(neg?-1:1)*Math.abs(numK(x.fluctuationsRatio));
+    out[id]={cur,chg,pct,prev:cur-chg,o:numK(x.openPrice),h:numK(x.highPrice),l:numK(x.lowPrice),status:String(x.marketStatus||''),t:String(x.localTradedAt||'')};
+  });
+  return out;
+}
+async function idxFetchRt(){
+  const [a,b]=await Promise.all([
+    nativeGet('https://polling.finance.naver.com/api/realtime/domestic/index/KOSPI,KOSDAQ').catch(()=>null),
+    nativeGet('https://polling.finance.naver.com/api/realtime/worldstock/index/'+IDX_LIST.filter(x=>!x.kr).map(x=>x.id).join(',')).catch(()=>null)]);
+  if(!a&&!b)throw new Error('지수 시세를 불러오지 못했습니다');
+  return Object.assign(idxParseRt(a),idxParseRt(b));
+}
+// 국내 1분봉 → [{x:09:00부터 분, t:'HH:MM', v}]
+function idxParseMinute(arr,ymd){
+  const d=ymd.replace(/-/g,'');
+  return (Array.isArray(arr)?arr:[]).map(x=>({s:String(x.localDateTime||''),v:+x.currentPrice})).filter(p=>p.s.slice(0,8)===d&&p.v>0)
+    .map(p=>{const hh=+p.s.slice(8,10),mm=+p.s.slice(10,12);return{x:(hh-9)*60+mm,t:p.s.slice(8,10)+':'+p.s.slice(10,12),v:p.v};})
+    .filter(p=>p.x>=0&&p.x<=390).sort((a,b)=>a.x-b.x);
+}
+// 일봉 → [{x:순번, t:'MM-DD', d:'YYYY-MM-DD', v:종가}]
+function idxParseDay(arr){
+  return (Array.isArray(arr)?arr:[]).map(x=>({d:String(x.localDate||'').replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3'),v:+x.closePrice}))
+    .filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.d)&&p.v>0).sort((a,b)=>a.d<b.d?-1:1).map((p,i)=>({x:i,t:p.d.slice(5),d:p.d,v:p.v}));
+}
+// 야후 5분봉 → 정규장 구간(분), 시각은 한국 시간으로 표시
+function idxParseYahoo(j){
+  const r=j&&j.chart&&j.chart.result&&j.chart.result[0];
+  if(!r||!Array.isArray(r.timestamp))return null;
+  const m=r.meta||{},reg=(m.currentTradingPeriod||{}).regular||{},q=((r.indicators||{}).quote||[])[0]||{},c=q.close||[];
+  const pts=[];r.timestamp.forEach((t,i)=>{if(c[i]>0)pts.push({ts:t,v:c[i]});});
+  if(!pts.length)return null;
+  const t0=reg.start>0&&reg.start<=pts[0].ts?reg.start:pts[0].ts,t1=reg.end>t0?reg.end:pts[pts.length-1].ts;
+  const off=+m.gmtoffset||0;
+  return{pts:pts.map(p=>({x:(p.ts-t0)/60,t:new Date((p.ts+9*3600)*1000).toISOString().slice(11,16),v:p.v})),
+    xMax:Math.max(1,(t1-t0)/60),prev:+(m.chartPreviousClose||m.previousClose)||null,day:new Date((pts[0].ts+off)*1000).toISOString().slice(0,10)};
+}
+async function idxFetchSeries(ix,rng,rt){
+  if(rng==='1d'){
+    if(ix.kr){
+      const ymd=(rt&&idxKstYmd(rt.t))||kstYmd(),d=ymd.replace(/-/g,'');
+      const pts=idxParseMinute(await nativeGet('https://api.stock.naver.com/chart/domestic/index/'+ix.id+'/minute?startDateTime='+d+'0900&endDateTime='+d+'1530').catch(()=>null),ymd);
+      if(!pts.length)throw new Error('분봉을 불러오지 못했습니다');
+      return{pts,xMax:390,krDay:true,prev:rt&&rt.prev>0?rt.prev:null,day:ymd,src:'네이버 1분봉'};
+    }
+    const y=idxParseYahoo(await nativeGet('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(ix.y)+'?interval=5m&range=1d').catch(()=>null));
+    if(!y)throw new Error('미국 당일 차트를 불러오지 못했습니다(야후)');
+    return Object.assign(y,{prev:y.prev||(rt&&rt.prev)||null,src:'야후 5분봉'});
+  }
+  const from=dtAddDays(kstYmd(),rng==='1m'?-31:-92).replace(/-/g,''),to=kstYmd().replace(/-/g,'');
+  const pts=idxParseDay(await nativeGet('https://api.stock.naver.com/chart/'+(ix.kr?'domestic':'foreign')+'/index/'+encodeURIComponent(ix.id)+'/day?startDateTime='+from+'0000&endDateTime='+to+'2359').catch(()=>null));
+  if(pts.length<2)throw new Error('일봉을 불러오지 못했습니다');
+  return{pts,xMax:pts.length-1,prev:pts[0].v,day:pts[pts.length-1].d,src:'네이버 일봉'};
+}
+// 갱신: 실시간 15초, 선택 차트는 장중 당일 60초 · 그 밖 10분
+async function idxRefresh(force){
+  const c=dtCache.idx;
+  if(c.busy)return;
+  c.busy=true;let changed=false;
+  try{
+    if(force||Date.now()-c.rtAt>15000){try{c.rt=Object.assign(c.rt,await idxFetchRt());c.rtAt=Date.now();c.err=null;changed=true;}catch(e){c.err=e.message;}}
+    const S=idxSel(),ix=idxById(S.sel),key=ix.id+'|'+S.rng,old=c.ser[key],rt=c.rt[ix.id];
+    const ttl=S.rng==='1d'&&rt&&rt.status==='OPEN'?60000:600000;
+    const fe=c.serErr[key],wait=!force&&fe&&Date.now()-fe.at<120000;   // 실패하면 2분 뒤 재시도(야후 429 등)
+    if(!wait&&(force||!old||Date.now()-old.at>ttl)){
+      try{c.ser[key]=Object.assign(await idxFetchSeries(ix,S.rng,rt),{at:Date.now()});delete c.serErr[key];}
+      catch(e){c.serErr[key]={m:e.message,at:Date.now()};}
+      changed=true;
+    }
+  }finally{c.busy=false;}
+  if(changed&&tab==='daytrade')dtRender();
+}
+function idxNiceStep(span){const r=span/4,p=Math.pow(10,Math.floor(Math.log10(r))),n=r/p;return (n<1.5?1:n<3?2:n<7?5:10)*p;}
+// 선 그래프 SVG — 2px 선, 10% 면, 실선 헤어라인 격자, 전일 종가 기준선(당일), 끝점 + 표면색 링, 터치 크로스헤어
+function idxChartSvg(ser,rng){
+  const W=Math.max(260,Math.min(640,((typeof window!=='undefined'&&window.innerWidth)||390)-66)),H=150,R=46,B=18,TP=8,pw=W-R,ph=H-B-TP;
+  const pts=ser.pts,base=ser.prev,last=pts[pts.length-1].v,up=base==null||last>=base,col=up?T.green:T.red;
+  let lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v));
+  if(base>0){lo=Math.min(lo,base);hi=Math.max(hi,base);}
+  if(!(hi>lo)){hi=lo*1.001+1e-9;lo=lo*0.999;}
+  const pad=(hi-lo)*0.08;lo-=pad;hi+=pad;
+  const X=x=>x/ser.xMax*pw,Y=v=>TP+(hi-v)/(hi-lo)*ph,f=n=>n.toFixed(1);
+  const st=idxNiceStep(hi-lo),ticks=[];for(let v=Math.ceil(lo/st)*st;v<=hi;v+=st)ticks.push(v);
+  const kAxis=ticks.some(v=>v>=1e4),tl=v=>kAxis?(v/1e3).toLocaleString('ko-KR',{maximumFractionDigits:st<1e3?1:0})+'K':v.toLocaleString('ko-KR',{maximumFractionDigits:st<1?2:0});
+  const line=pts.map((p,i)=>(i?'L':'M')+f(X(p.x))+' '+f(Y(p.v))).join(''),xe=X(pts[pts.length-1].x);
+  const area=line+'L'+f(xe)+' '+f(TP+ph)+'L'+f(X(pts[0].x))+' '+f(TP+ph)+'Z';
+  // x축 라벨: 국내 당일은 장 시간 고정(09·11·13·15시), 그 밖은 처음·가운데·끝
+  let xl;
+  if(ser.krDay)xl=[[0,'09:00'],[120,'11:00'],[240,'13:00'],[360,'15:00']];
+  else{const n=pts.length,ix=[0,Math.floor((n-1)/2),n-1];xl=ix.map(i=>[pts[i].x,pts[i].t]);}
+  window._idxHov={pts:pts.map(p=>({x:X(p.x),y:Y(p.v),t:p.t,v:p.v})),W,H,TP,ph,base};
+  return `<svg id="idxSvg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;touch-action:pan-y;overflow:visible" onpointerdown="idxHover(event)" onpointermove="idxHover(event)" onpointerleave="idxHover(null)" onpointercancel="idxHover(null)">
+    ${ticks.map(v=>`<line x1="0" x2="${pw}" y1="${f(Y(v))}" y2="${f(Y(v))}" stroke="${T.border}" stroke-width="1"/><text x="${pw+6}" y="${f(Y(v)+3.5)}" font-size="10" fill="${T.text3}" font-family="Menlo,Consolas,monospace">${tl(v)}</text>`).join('')}
+    ${rng==='1d'&&base>0?`<line x1="0" x2="${pw}" y1="${f(Y(base))}" y2="${f(Y(base))}" stroke="${T.text3}" stroke-width="1"/><text x="2" y="${f(Y(base)-4)}" font-size="9" fill="${T.text3}">전일 ${idxFmt(base)}</text>`:''}
+    <path d="${area}" fill="${col}" fill-opacity="0.1" stroke="none"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${f(xe)}" cy="${f(Y(last))}" r="4" fill="${col}" stroke="${T.card}" stroke-width="2"/>
+    ${xl.map(([x,t],i)=>`<text x="${f(Math.min(pw-2,Math.max(2,X(x))))}" y="${H-4}" font-size="10" fill="${T.text3}" text-anchor="${i===0?'start':i===xl.length-1&&!ser.krDay?'end':'middle'}">${t}</text>`).join('')}
+    <line id="idxX" x1="0" x2="0" y1="${TP}" y2="${TP+ph}" stroke="${T.text2}" stroke-width="1" visibility="hidden"/>
+    <circle id="idxDot" r="4" fill="${col}" stroke="${T.card}" stroke-width="2" visibility="hidden"/>
+    <rect x="0" y="0" width="${pw}" height="${H}" fill="transparent"/>
+  </svg>`;
+}
+// 크로스헤어: 가장 가까운 시점에 붙고, 위 읽기 칸에 시각·값·기준 대비 등락 표시 (전체 다시 그리지 않음)
+function idxHover(ev){
+  const hv=window._idxHov,svg=document.getElementById('idxSvg'),tip=document.getElementById('idxTip'),xl=document.getElementById('idxX'),dot=document.getElementById('idxDot');
+  if(!hv||!svg||!tip||!xl||!dot)return;
+  if(!ev){xl.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');tip.textContent=tip.getAttribute('data-def')||'';return;}
+  const r=svg.getBoundingClientRect(),x=(ev.clientX-r.left)*hv.W/(r.width||hv.W);
+  let best=hv.pts[0];for(const p of hv.pts)if(Math.abs(p.x-x)<Math.abs(best.x-x))best=p;
+  xl.setAttribute('x1',best.x);xl.setAttribute('x2',best.x);xl.setAttribute('visibility','visible');
+  dot.setAttribute('cx',best.x);dot.setAttribute('cy',best.y);dot.setAttribute('visibility','visible');
+  const d=hv.base>0?(best.v/hv.base-1)*100:null;
+  tip.textContent=best.t+'  '+idxFmt(best.v)+(d!=null?'  ('+(d>=0?'+':'')+d.toFixed(2)+'%)':'');
+}
+function idxCard(){
+  const S=idxSel(),ix=idxById(S.sel),c=dtCache.idx,rt=c.rt[ix.id],key=ix.id+'|'+S.rng,ser=c.ser[key],serr=c.serErr[key]&&c.serErr[key].m;
+  const chip=x=>{const r=c.rt[x.id],on=x.id===ix.id;
+    return `<button onclick="idxPick('sel','${x.id}')" class="tap" style="flex:1;min-width:0;padding:6px 2px;border-radius:10px;border:1px solid ${on?T.teal:T.border};background:${on?T.teal+'22':'transparent'}">
+      <div style="font-size:11px;font-weight:${on?700:400};color:${on?T.teal:T.text2};white-space:nowrap">${x.l}</div>
+      <div class="mono" style="font-size:10px;color:${r?pctC(r.pct):T.text3}">${r?(r.pct>0?'▲':r.pct<0?'▼':'')+Math.abs(r.pct).toFixed(2)+'%':'—'}</div></button>`;};
+  const rbtn=([v,l])=>{const on=v===S.rng;return `<button onclick="idxPick('rng','${v}')" class="tap" style="padding:4px 9px;border-radius:8px;font-size:11px;font-weight:700;background:${on?T.teal:T.bg3};color:${on?'#000':T.text2}">${l}</button>`;};
+  // 머리: 지수 값 + 등락(당일은 전일 대비, 기간은 기간 첫날 대비)
+  const isDay=S.rng==='1d',cur=rt?rt.cur:ser?ser.pts[ser.pts.length-1].v:null;
+  const base=isDay?(rt?rt.prev:ser&&ser.prev):ser&&ser.prev,chg=cur!=null&&base>0?cur-base:null,pc=chg!=null?chg/base*100:null;
+  const live=rt&&rt.status==='OPEN',when=rt?`${live?'장중':'마감'} · ${ix.kr?idxKstHm(rt.t):idxKstYmd(rt.t).slice(5)+' '+idxKstHm(rt.t)} 기준`:'';
+  const rngL=isDay?'전일 대비':(S.rng==='1m'?'1개월':'3개월')+(ser?` (${ser.pts[0].t}~)`:'');
+  const def=`${ix.l} ${idxFmt(cur)}`;
+  let body;
+  if(ser&&ser.pts.length>=2)body=idxChartSvg(ser,S.rng);
+  else body=`<div style="height:150px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:${serr?T.amber:T.text3};line-height:1.6">${serr?esc(serr)+(isDay&&!ix.kr?'<br>1개월 보기로 바꿔 보세요':''):c.busy||(window.HttpBridge&&window.HttpBridge.get)?'차트 불러오는 중…':'앱에서 열면 지수 차트가 표시됩니다'}</div>`;
+  const stats=isDay&&rt?[['시가',rt.o],['고가',rt.h],['저가',rt.l],['전일',rt.prev]]
+    :ser&&!isDay?[['기간 고가',Math.max(...ser.pts.map(p=>p.v))],['기간 저가',Math.min(...ser.pts.map(p=>p.v))],['시작',ser.pts[0].v]]:[];
+  return card(`<div style="display:flex;gap:4px;margin-bottom:10px">${IDX_LIST.map(chip).join('')}</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:8px">
+      <div style="min-width:0"><div style="font-size:12px;color:${T.text2}">${ix.l} <span style="font-size:10px;color:${T.text3}">${esc(when)}</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span class="mono" style="font-size:22px;font-weight:800;color:${T.text}">${idxFmt(cur)}</span>
+        ${chg!=null?`<span class="mono" style="font-size:13px;font-weight:700;color:${pctC(chg)}">${chg>0?'▲':chg<0?'▼':''}${idxFmt(Math.abs(chg))} (${pc>=0?'+':''}${pc.toFixed(2)}%)</span>`:''}</div>
+        <div style="font-size:10px;color:${T.text3}">${rngL}</div></div>
+      <div style="display:flex;gap:4px;flex-shrink:0">${IDX_RNG.map(rbtn).join('')}</div>
+    </div>
+    <div id="idxTip" data-def="${esc(def)}" class="mono" style="font-size:11px;color:${T.text2};height:16px;margin:6px 0 2px">${esc(def)}</div>
+    ${body}
+    ${stats.length?`<div style="display:grid;grid-template-columns:repeat(${stats.length},1fr);gap:4px;margin-top:8px">${stats.map(([k,v])=>`<div style="background:${T.bg2};border-radius:8px;padding:5px 6px"><div style="font-size:9px;color:${T.text3}">${k}</div><div class="mono" style="font-size:11px;color:${T.text};font-weight:600">${idxFmt(v)}</div></div>`).join('')}</div>`:''}
+    <div style="font-size:10px;color:${T.text3};margin-top:6px">${ser?esc(ser.src)+' · ':''}그래프를 누르거나 끌면 시점별 값${isDay&&!ix.kr?' · 시각은 한국 시간':''}</div>`,'margin-top:10px');
 }
 
 function dtScreen(){
@@ -2766,9 +2935,10 @@ function dtScreen(){
       ${subs.map(s=>`<button onclick="dtSub='${s.id}';render()" class="tap" style="flex:1;padding:8px;border-radius:20px;border:1px solid ${dtSub===s.id?T.teal:T.border};background:${dtSub===s.id?T.teal+'22':'transparent'};color:${dtSub===s.id?T.teal:T.text2};font-size:12px;font-weight:${dtSub===s.id?700:400}">${s.l}</button>`).join('')}
     </div>
     <div id="dtScroll" class="scr fade" style="flex:1;padding:0 16px 32px">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0 2px">
+      ${idxCard()}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px">
         <div style="font-size:12px;color:${T.text3}"><span style="color:${mk.c};font-weight:700">● ${mk.t}</span> · 갱신 ${upd}${dtCache.busy?` <span class="spin" style="color:${T.teal}">↻</span>`:''}</div>
-        <button onclick="dtRefresh(false)" class="tap" style="padding:6px 12px;background:${T.bg3};color:${T.teal};border-radius:8px;font-size:12px;font-weight:700">↻ 새로고침</button>
+        <button onclick="dtRefresh(false);idxRefresh(true)" class="tap" style="padding:6px 12px;background:${T.bg3};color:${T.teal};border-radius:8px;font-size:12px;font-weight:700">↻ 새로고침</button>
       </div>
       <div style="font-size:11px;color:${T.text3}">미국 밤사이 신호 · 시가 매수 → ${dt.exit==='close'?'당일 종가':'다음 거래일 시가'} 매도 · 1회 ${won(dt.amt,true)}원</div>
       ${dtCache.err?`<div style="font-size:12px;color:${T.red};margin-top:8px">⚠ ${esc(dtCache.err)}</div>`:''}
@@ -3129,7 +3299,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.8.1</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v6.9</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
