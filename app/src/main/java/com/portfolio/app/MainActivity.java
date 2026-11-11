@@ -647,12 +647,16 @@ public class MainActivity extends Activity {
 
     private String kiwoomOrderRequest(boolean mock, String token, String side, String stkCd,
                                        String trdeTp, String qty, String price) throws Exception {
+        // kt10000/kt10001 규격: 모든 값은 문자열. dmst_stex_tp는 잔고조회(kt00018)와 같은 "KRX",
+        // trde_tp "0" 보통(지정가) / "3" 시장가, 시장가는 ord_uv를 비운다
+        boolean market = "3".equals(trdeTp);
         JSONObject body = new JSONObject();
-        body.put("dmst_stex_tp", "01"); // 01: KRX
+        body.put("dmst_stex_tp", "KRX");
         body.put("stk_cd", stkCd);
-        body.put("ord_qty", Long.parseLong(qty));
+        body.put("ord_qty", String.valueOf(Long.parseLong(qty)));
+        body.put("ord_uv", market ? "" : String.valueOf(Long.parseLong(price)));
         body.put("trde_tp", trdeTp);
-        body.put("ord_uv", Long.parseLong(price));
+        body.put("cond_uv", "");
 
         String apiId = "sell".equals(side) ? "kt10001" : "kt10000";
         URL u = new URL((mock ? KIWOOM_MOCK_URL : KIWOOM_REAL_URL) + "/api/dostk/ordr");
