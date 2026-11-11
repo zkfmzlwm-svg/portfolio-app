@@ -27,16 +27,16 @@ ok(run('GOAL_L.length')===140&&run('GOAL_L.every(r=>r.length===5)'),'월수익�
 {const m=[0,1,2,3,4].map(j=>run(`GOAL_L.reduce((s,r)=>s+r[${j}],0)/GOAL_L.length`));ok(m.every(x=>Math.abs(x)<1e-3),'평균 제거됨 '+m.map(x=>x.toFixed(5)));}
 const base=o=>Object.assign({W,monthly:250e4,months:120,v0:1e8,tax:0,krx:0,goal:10e8},o||{});
 const r=run(`goalRun(${JSON.stringify(base())})`);
-ok(Math.abs(r.p-57.2)<4,'P(≥10억) ≈ 57% (Python 57.2), got '+r.p.toFixed(1));
-ok(Math.abs(r.med/1e8-10.77)<0.6,'중앙 ≈ 10.8억, got '+(r.med/1e8).toFixed(2));
-ok(Math.abs(r.p10/1e8-6.17)<0.4,'하위10% ≈ 6.2억, got '+(r.p10/1e8).toFixed(2));
+ok(Math.abs(r.p-53.0)<4,'P(≥10억) ≈ 53% (Python 수시 ±7%p 53.0), got '+r.p.toFixed(1));
+ok(Math.abs(r.med/1e8-10.30)<0.6,'중앙 ≈ 10.3억, got '+(r.med/1e8).toFixed(2));
+ok(Math.abs(r.p10/1e8-6.20)<0.4,'하위10% ≈ 6.2억, got '+(r.p10/1e8).toFixed(2));
 const rs=run(`goalRun(${JSON.stringify(base({W:run('STABLE_TARGETS')}))})`),rg=run(`goalRun(${JSON.stringify(base({W:run('GOALMAX_TARGETS')}))})`);
-ok(Math.abs(rs.p-56.4)<4,'안정형 P ≈ 56% (Python 56.4), got '+rs.p.toFixed(1));
-ok(Math.abs(rg.p-64.0)<4&&rg.p>r.p,'10억 확률형 P ≈ 64% (Python 64.0) > 기본, got '+rg.p.toFixed(1));
+ok(Math.abs(rs.p-51.8)<4,'안정형 P ≈ 52% (Python 51.8), got '+rs.p.toFixed(1));
+ok(Math.abs(rg.p-60.5)<4&&rg.p>r.p,'10억 확률형 P ≈ 61% (Python 60.5) > 기본, got '+rg.p.toFixed(1));
 const r400=run(`goalRun(${JSON.stringify(base({monthly:400e4}))})`);
-ok(Math.abs(r400.p-82.6)<4,'월 400만 P ≈ 83%, got '+r400.p.toFixed(1));
+ok(Math.abs(r400.p-81.6)<4,'월 400만 P ≈ 82% (Python 81.6), got '+r400.p.toFixed(1));
 const r0=run(`goalRun(${JSON.stringify(base({mu:[7,8,3.5,5,0]}))})`);
-ok(Math.abs(r0.p-40.1)<4,'코인 0% 가정 P ≈ 40%, got '+r0.p.toFixed(1));
+ok(Math.abs(r0.p-36.6)<4,'코인 0% 가정 P ≈ 37% (Python 36.6), got '+r0.p.toFixed(1));
 const rk=run(`goalRun(${JSON.stringify(base({krx:3}))})`),rt=run(`goalRun(${JSON.stringify(base({tax:118.8e4}))})`);
 ok(rk.p>r.p&&rt.p>r.p&&rt.med>r.med,'스위칭·절세 레버는 확률↑');
 // 0원 시작·적립 0 → 0
@@ -47,17 +47,17 @@ ok(Math.abs(run('goalMonthsLeft()')-120)<=1,'기본 남은 기간 10년, got '+r
 ok(Math.abs(run('goalTaxRefund({tax:true,pension:900,rate:13.2})')-1188000)<1&&run('goalTaxRefund({tax:false,pension:900,rate:13.2})')===0,'세액공제 118.8만 / 미반영 0');
 ok(run('goalTaxRefund({tax:true,pension:1500,rate:16.5})')===1485000,'납입 한도 900만 적용');
 const t0=Date.now(),gh=run('goalCardHtml()'),dt=Date.now()-t0;
-ok(gh.includes("10억 이상 확률")&&gh.includes("확률 50%에 필요한 월 적립")&&gh.includes("스위칭 신호 준수")&&gh.includes("ISA"),'목표 카드 렌더');
+ok(gh.includes("10억 이상 확률")&&gh.includes("확률 50%에 필요한 월 적립"),'목표 카드 렌더');
+ok(!gh.includes("방법 (억원)")&&!gh.includes("%p</div>")&&!gh.includes("우선순위")&&!gh.includes("ISA")&&!gh.includes("몬테카를로"),'방법별 비교 표·%p 차이 이하 내용 없음');
 ok(!gh.includes("NaN")&&!gh.includes("undefined"),'목표 카드 NaN 없음');
 console.log('  목표 카드 계산 '+dt+'ms');
 ok(run("rebalScreen()").includes("id=\"goalCard\"")&&run("rebalScreen()").includes("계산 중"),"리밸런싱 탭에 목표 카드(비동기)");
 ok(run("goalCardCached()")===run("goalCardCached()")&&run("_goalHtml.h").includes("10억 이상 확률"),"목표 카드 캐시");
 ok(run("switchingScreen()").includes('고정 목표 비중 운영 (기본)')&&run("switchingScreen()").includes('스위칭 신호 준수 시'),'스위칭 탭에 10억 확률·신호 준수 효과');
 run("portfolio.targets=Object.assign({},STABLE_TARGETS)");
-ok(run('goalCardHtml()').includes('기본 비중(')&&run("switchingScreen()").includes('기본 비중으로 바꾸고')&&run('goalCardHtml()').includes('10억 확률형 비중 30/20/5/25/20'),'안정형이면 기본 전환 버튼 + 10억 확률형 비교 행');
+ok(run("switchingScreen()").includes('기본 비중으로 바꾸고')&&!run('goalCardHtml()').includes('기본 비중('),'안정형이면 스위칭 탭에만 기본 전환 버튼');
 run('applyFixedTargets()');ok(run('portfolio.targets.us')===35&&run('portfolio.targets.crypto')===15,'기본 비중 적용');
-run('applyGoalMaxTargets()');ok(run('portfolio.targets.kr')===30&&run('portfolio.targets.crypto')===20,'10억 확률형 적용');
-run('applyStableTargets()');ok(run('portfolio.targets.bonds')===10,'안정형 적용');
+ok(run("typeof applyGoalMaxTargets")==='undefined'&&run("typeof applyStableTargets")==='undefined','프리셋 버튼 함수 제거');
 run("portfolio.goal={amt:5,end:'2031-10',tax:false,pension:0,rate:13.2}");
 ok(run('goalCardHtml()').includes('🎯 5억 목표 · 2031-10까지')&&run('goalCardHtml()').includes('절세 미반영'),'목표 변경 반영');
 ok(run('migratePortfolio(JSON.parse(JSON.stringify(portfolio))).goal.amt')===5,'백업·마이그레이션 후 목표 유지');

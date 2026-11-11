@@ -208,42 +208,30 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   run("tab='home';render();tab='rebal';render();tab='switching';render();tab='holdings';catH='kr';render();showKeepModal();closeModal()");pass++;
 }
 
-// 7d. 반기(6·12월) 정기 리밸런싱(v6.5부터 수시 없음), 주식 종목 상한 트림 (v5.3)
+// 7d. 수시 리밸런싱 — 한 자산군이라도 목표 비중과 7%p 이상 괴리 시 알림 (v7.0), 주식 종목 상한 트림 (v5.3)
 {
   run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;delete portfolio.lastRebal");
-  // 일정: 10월 → 다음 12월 말, 6월(미기록) → 이번 달 차례, 6월 기록 후 → 12월, 12월 기록 후 → 다음 해 6월
-  const s10=run("rebalSchedule(new Date(2026,9,9))");
-  ok(s10.nm===12&&!s10.due&&s10.nextLabel==='2026년 12월 말','10월 → 다음 정기 12월 말: '+s10.nextLabel);
-  ok(s10.dday===83,'10/9 → 12/31 D-83, got '+s10.dday);
-  const s6=run("rebalSchedule(new Date(2026,5,15))");
-  ok(s6.due&&s6.nm===6,'6월 미기록 → 이번 달 정기 차례');
-  run("portfolio.lastRebal='2026-06-28'");
-  const s6d=run("rebalSchedule(new Date(2026,5,30))");
-  ok(!s6d.due&&s6d.nm===12,'6월 기록 후 → 다음 12월');
-  run("portfolio.lastRebal='2026-12-24'");
-  const s12d=run("rebalSchedule(new Date(2026,11,26))");
-  ok(!s12d.due&&s12d.nextLabel==='2027년 6월 말','12월 기록 후 → 다음 해 6월: '+s12d.nextLabel);
-  ok(run("rebalSchedule(new Date(2027,0,5)).nm")===6,'1월 → 6월');
-  run("delete portfolio.lastRebal");
+  ok(run('REBAL_BAND')===7,'수시 기준 7%p');
+  ok(run("typeof rebalSchedule")==='undefined'&&run("typeof REBAL_MONTHS")==='undefined','정기(6·12월) 일정 없음');
   run("markRebalDone()");
   ok(/^\d{4}-\d{2}-\d{2}$/.test(run('portfolio.lastRebal')),'완료 기록 날짜 저장: '+run('portfolio.lastRebal'));
   ok(run("migratePortfolio(JSON.parse(JSON.stringify(portfolio))).lastRebal")===run('portfolio.lastRebal'),'마이그레이션·백업 후 완료 기록 유지');
+  ok(run("rebalStatus().last")===run('portfolio.lastRebal'),'상태에 마지막 기록');
   run("delete portfolio.lastRebal");
 
   run("portfolio.targets=Object.assign({},STABLE_TARGETS)");   // 아래 수시·트림 검증은 안정형(20/30/10/25/15) 기준 수치
-  // 수시 기준(v5.4): 목표 금액 대비 ±25%. INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/25/15) → 전 자산군 초과
-  // v6.5: 수시 리밸런싱 없음(REBAL_REL=null) → 이탈이 커도 수시 기준 초과 없음, 이탈은 참고 표시만
-  ok(run('REBAL_REL')===null,'v6.5 수시 기준 없음');
-  ok(run("bandBreaches().length")===0,'수시 없음 → 초과 자산군 없음');
-  ok(Math.round(run("relDev(rebalRows().find(r=>r.k==='crypto'))"))===49,'코인 목표(15%) 대비 +49%(참고 이탈), got '+Math.round(run("relDev(rebalRows().find(r=>r.k==='crypto'))")));
-  const mk=(ev,tval)=>`bandBreaches([{k:'x',name:'x',ev:${ev},tval:${tval},w:0.1,cur:0}]).length`;
-  ok(run(mk(200,100))===0&&run(mk(10,100))===0,'목표의 2배·10%여도 수시 없음');
-  ok(run(mk(5,0))===0,'목표 0% 자산군은 수시 기준 판단 제외');
-  // 알림은 6·12월 정기만 — 수시 기준 초과는 상태(level)·홈 배너에 영향 없음
-  ok(run("rebalStatus().level")===(run("rebalSchedule().due")?'due':'ok'),'수시 초과여도 상태는 정기 일정만 반영');
-  ok(!run("homeRebalBanner()").includes('수시'),'홈 배너에 수시 알림 없음');
+  // INIT(국내 42.9·해외 12.8·채권 7.0·금 15.0·코인 22.4 vs 20/30/10/25/15) → 국내 +22.9·해외 −17.2·금 −10.0·코인 +7.4%p 초과, 채권 −3.0%p 미달
+  const br=run("bandBreaches().map(r=>r.k)");
+  ok(br.length===4&&!br.includes('bonds')&&br[0]==='kr','7%p 이상 4개(채권 제외, 큰 순): '+br.join(','));
+  const mk=(cur,w)=>`bandBreaches([{k:'x',name:'x',ev:1,tval:1,w:${w},cur:${cur}}]).length`;
+  ok(run(mk(27,0.2))===1&&run(mk(13,0.2))===1,'목표 20% → 27%·13%(정확히 7%p) 알림');
+  ok(run(mk(26.9,0.2))===0&&run(mk(13.1,0.2))===0,'6.9%p는 알림 없음');
+  ok(run(mk(6.96,0))===1&&run(mk(6.94,0))===0,'목표 0% 자산군도 7%p(표시 반올림 기준)');
+  ok(run("rebalStatus().level")==='due','초과 → 상태 due');
+  ok(run("homeRebalBanner()").includes('리밸런싱 필요')&&run("homeRebalBanner()").includes('국내주식 <span class=\"mono\">+22.9%p</span>'),'홈 배너에 괴리 자산군·%p 표시');
   run("portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3}");
-  ok(run("bandBreaches().length")===0,'목표=현재면 밴드 초과 없음');
+  ok(run("bandBreaches().length")===0&&run("rebalStatus().level")==='ok'&&run("homeRebalBanner()")==='','목표=현재면 알림 없음');
+  ok(run("rebalAlertCard()").includes('리밸런싱 대기')&&run("rebalAlertCard()").includes('최대 괴리'),'정상 상태 카드: 대기 + 최대 괴리');
   run("portfolio.targets=Object.assign({},STABLE_TARGETS)");
   ok(run("bandBreaches(rebalRows().map(r=>Object.assign({},r,{ev:0})))").length===0,'자산 0이면 밴드 경보 없음');
 
@@ -293,13 +281,13 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   ok(run("rebalScreen()").includes('주식 종목 상한 트림')&&run("rebalScreen()").includes('✂ 에스티팜')===false,'리밸런싱 화면 렌더(에스티팜 🔒이면 트림 표에 없음)');
   run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets=Object.assign({},STABLE_TARGETS)");
   const scr=run("rebalScreen()");
-  ok(scr.includes('✂ 에스티팜')&&scr.includes('목표 대비 이탈(참고)')&&scr.includes('수시 리밸런싱 없음')&&scr.includes('반기 1회'),'리밸런싱 화면: 반기 1회 메인 + 이탈 참고 표시 + 에스티팜 트림 표시');
-  // 홈 배너: 6·12월 미기록일 때만. 이번 달을 완료로 기록하면 사라짐
+  ok(scr.includes('✂ 에스티팜')&&scr.includes('리밸런싱 필요 — 괴리 7%p 이상')&&scr.includes('괴리 7%p 이상 시 수시')&&!scr.includes('반기')&&!scr.includes('6·12월'),'리밸런싱 화면: 수시 7%p 알림 + 에스티팜 트림 표시, 정기 문구 없음');
+  ok(!scr.includes('메인 전략')&&!scr.includes('analysis/rebal_cycle/timing.py'),'알림 카드 설명 문구 없음');
+  ok(!scr.includes('10억 확률형</button>')&&!scr.includes('안정형</button>')&&!scr.includes('합계 '),'목표 비중 설정: 입력 + 저장 버튼만');
+  // 완료 기록해도 괴리가 남아 있으면 알림 유지(수시는 현재 비중으로만 판단)
   run("portfolio.lastRebal=localYmd(new Date())");
-  ok(run("homeRebalBanner()")==='','이번 달 완료 기록 → 홈 배너 없음');
+  ok(run("homeRebalBanner()").includes('리밸런싱 필요'),'완료 기록과 무관하게 괴리 기준으로 알림');
   run("delete portfolio.lastRebal");
-  ok(run("rebalSchedule().due")?run("homeRebalBanner()").includes('정기 리밸런싱 차례'):run("homeRebalBanner()")==='','6·12월 미기록일 때만 홈 배너');
-  ok(run("rebalScheduleCard({rows:rebalRows(),br:bandBreaches(),level:'due',sc:rebalSchedule(new Date(2026,5,10))})").includes('이번 달 정기 리밸런싱 (6월)'),'6월 정기 카드');
 }
 
 // v6.2: 종목 카드 = 손익금액·손익% + 보유수량/평균단가/현재가/평가금액, 다크/라이트 테마
