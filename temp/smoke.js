@@ -208,7 +208,7 @@ ok(already.holdings.watchlist.length===migratedOnce.holdings.watchlist.length,'v
   run("tab='home';render();tab='rebal';render();tab='switching';render();tab='holdings';catH='kr';render();showKeepModal();closeModal()");pass++;
 }
 
-// 7d. 수시 리밸런싱 — 한 자산군이라도 목표 비중과 7%p 이상 괴리 시 알림 (v6.9), 주식 종목 상한 트림 (v5.3)
+// 7d. 수시 리밸런싱 — 한 자산군이라도 목표 비중과 7%p 이상 괴리 시 알림 (v7.0), 주식 종목 상한 트림 (v5.3)
 {
   run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;delete portfolio.lastRebal");
   ok(run('REBAL_BAND')===7,'수시 기준 7%p');

@@ -27,7 +27,7 @@ for(const t of['home','holdings','switching','rebal']){
   const out=els.app._html;
   for(const bad of['undefined','NaN','function ','[object']){if(out.includes(bad)){console.log('✗ keep',t,'contains',bad);issues++;}}
 }
-// v6.9: 괴리 7%p 미만(정상)·이상(알림) 상태 모두 리밸런싱/홈 렌더 깨짐 없음
+// v7.0: 괴리 7%p 미만(정상)·이상(알림) 상태 모두 리밸런싱/홈 렌더 깨짐 없음
 run("portfolio=JSON.parse(JSON.stringify(INIT));portfolio.fixedTargetsV1=true;portfolio.targets={kr:42.9,us:12.8,bonds:7,gold:15,crypto:22.3};portfolio.lastRebal='2026-06-28'");
 for(const t of['home','rebal']){run("tab='"+t+"';render()");const out=els.app._html;
   for(const bad of['undefined','NaN','function ','[object']){if(out.includes(bad)){console.log('✗ ok-state',t,'contains',bad);issues++;}}}
