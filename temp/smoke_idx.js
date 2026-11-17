@@ -38,6 +38,14 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗ FAIL
   ok(yh&&yh.pts.length===2&&yh.pts[1].x===10&&yh.xMax===390&&yh.prev===7376.86&&yh.day==='2026-11-09','야후: 빈 값 제외·정규장 분·전일 종가');
   ok(yh.pts[0].t==='23:30','야후 시각은 한국 시간');
   ok(run('idxParseYahoo({chart:{result:[]}})')===null&&run('idxParseYahoo(null)')===null,'야후 빈 응답');
+  // 2b. v6.9.1 미국 당일 = 네이버 1분봉 (실제 응답 2026-11-16 S&P500)
+  ok(run("usEtOffset('2026-11-16')")===-5&&run("usEtOffset('2026-07-01')")===-4&&run("usEtOffset('2026-03-08')")===-4&&run("usEtOffset('2026-03-07')")===-5&&run("usEtOffset('2026-11-01')")===-5&&run("usEtOffset('2026-10-31')")===-4,'미국 서머타임 판정(2026: 3/8~11/1)');
+  sb.__nv=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/naver_us_day_INX.json'),'utf8'));
+  const nv=run('idxParseNaverUsDay(__nv)');
+  ok(nv&&nv.pts.length===391&&nv.xMax===390&&nv.prev===7561.67&&nv.day==='2026-11-16','네이버 미국 1분봉 391개·전일 종가: '+(nv&&[nv.pts.length,nv.xMax,nv.prev,nv.day]));
+  ok(nv.pts[0].t==='23:30'&&nv.pts[0].x===0&&nv.pts[390].t==='06:00'&&nv.pts[390].v===7417.12,'시각은 한국 시간(EST 09:30 → 23:30, 16:00 → 06:00)');
+  ok(run("idxParseNaverUsDay({priceInfos:[],openTime:'20261116093000'})")===null&&run('idxParseNaverUsDay(null)')===null,'빈 응답은 예비 소스로');
+  const svgNv=run('idxChartSvg(idxParseNaverUsDay(__nv),"1d")');ok(!/NaN|undefined/.test(svgNv)&&svgNv.includes('23:30')&&svgNv.includes('06:00'),'네이버 미국 당일 SVG');
 
   // 3. 차트 SVG
   const ser={pts:mn,xMax:390,krDay:true,prev:5018.85,src:'네이버 1분봉'};
@@ -74,6 +82,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗ FAIL
     if(/realtime\\/domestic/.test(u))return{datas:[{itemCode:'KOSPI',closePrice:'5,100.00',compareToPreviousClosePrice:'81.15',compareToPreviousPrice:{code:'2'},fluctuationsRatio:'1.62',marketStatus:'OPEN',localTradedAt:'2026-11-10T15:30:00+09:00'}]};
     if(/realtime\\/worldstock/.test(u))return{datas:[]};
     if(/KOSPI\\/minute/.test(u))return[{localDateTime:'20261110090000',currentPrice:5050},{localDateTime:'20261110090100',currentPrice:5060}];
+    if(/foreign\\/index\\/\\.INX\\?periodType=day/.test(u))return window.__usNaver||{priceInfos:[]};
     if(/yahoo/.test(u))throw new Error('http fail');
     return[];};Store.set('dt_idx','{"sel":"KOSPI","rng":"1d"}');tab='home';`);
   await run('idxRefresh(false)');
@@ -83,11 +92,15 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗ FAIL
   ok(run('window.__calls.length')===n1,'15초·60초 안에는 다시 안 부름');
   await run('idxRefresh(true)');ok(run('window.__calls.length')===n1+3,'새로고침은 강제로 다시');
   run(`Store.set('dt_idx','{"sel":".INX","rng":"1d"}')`);await run('idxRefresh(false)');
-  ok(run('dtCache.idx.serErr[".INX|1d"].m')==='미국 당일 차트를 불러오지 못했습니다(야후)','야후 실패 메시지');
+  ok(/^미국 당일 차트를 불러오지 못했습니다/.test(run('dtCache.idx.serErr[".INX|1d"].m'))&&run('window.__calls.findIndex(u=>/periodType=day/.test(u))<window.__calls.findIndex(u=>/yahoo/.test(u))'),'네이버 먼저, 둘 다 실패 시 메시지');
   const n2=run('window.__calls.length');await run('idxRefresh(false)');
   ok(run('window.__calls.filter(u=>/yahoo/.test(u)).length')===1&&run('window.__calls.length')===n2,'실패한 차트는 2분 안에 다시 안 부름');
   run('dtCache.idx.serErr[".INX|1d"].at-=121000');await run('idxRefresh(false)');
   ok(run('window.__calls.filter(u=>/yahoo/.test(u)).length')===2,'2분 뒤 재시도');
+  run('window.__usNaver=__nv;dtCache.idx.serErr[".INX|1d"].at-=121000');const ny=run('window.__calls.filter(u=>/yahoo/.test(u)).length');
+  await run('idxRefresh(false)');
+  ok(run('dtCache.idx.ser[".INX|1d"].pts.length')===391&&run('dtCache.idx.ser[".INX|1d"].src')==='네이버 1분봉'&&run('window.__calls.filter(u=>/yahoo/.test(u)).length')===ny,'네이버 성공 시 야후 안 부름');
+  run('delete dtCache.idx.ser[".INX|1d"];dtCache.idx.serErr[".INX|1d"]={m:"미국 당일 차트를 불러오지 못했습니다 (장 시작 전이거나 시세 서버 응답 없음)",at:Date.now()}');
 
   // 7. 카드 상태별 렌더 (데이터 없음 / 오류 / 정상), 단타 탭 상단 배치
   const card=run('idxCard()');
