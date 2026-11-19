@@ -317,5 +317,13 @@ run("showTradeModal('kr','s4','buy')");pass++;
 run("showTradeModal('crypto','c1','sell')");pass++;
 run("closeModal()");
 run("showBackup()");pass++;
+// v7.1: 스타일 목표 재산정 (analysis/style_tilt/robust.py) — 시장 앵커 + 약세만 틸트
+{const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
+ ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":75}','v7.1 kr.size 80/80/75');
+ ok(t('kr.export')==='{"bull":65,"neutral":65,"bear":65}','v7.1 kr.export 65 고정');
+ ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.1 us.value 50/50/40');
+ ok(t('us.size')==='{"bull":90,"neutral":90,"bear":95}','v7.1 us.size 90/90/95');
+ const out=run("switchingScreen()");
+ ok(out.includes('robust.py')&&!out.includes('weights.py'),'v7.1 스위칭 탭 근거 표기');}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
