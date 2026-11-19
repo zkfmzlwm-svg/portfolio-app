@@ -317,13 +317,23 @@ run("showTradeModal('kr','s4','buy')");pass++;
 run("showTradeModal('crypto','c1','sell')");pass++;
 run("closeModal()");
 run("showBackup()");pass++;
-// v7.1: 스타일 목표 재산정 (analysis/style_tilt/robust.py) — 시장 앵커 + 약세만 틸트
+// v7.2: 스타일 목표 프리셋 — 기본 홍춘욱 원전략(강세 수출·가치·대형↑ / 약세 내수·성장·소형↑), 선택 데이터 검증형(v7.1)
 {const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
- ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":75}','v7.1 kr.size 80/80/75');
- ok(t('kr.export')==='{"bull":65,"neutral":65,"bear":65}','v7.1 kr.export 65 고정');
- ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.1 us.value 50/50/40');
- ok(t('us.size')==='{"bull":90,"neutral":90,"bear":95}','v7.1 us.size 90/90/95');
- const out=run("switchingScreen()");
- ok(out.includes('robust.py')&&!out.includes('weights.py'),'v7.1 스위칭 탭 근거 표기');}
+ ok(run('stylePreset()')==='hong','v7.2 기본 프리셋 = 홍춘욱');
+ ok(t('kr.size')==='{"bull":90,"neutral":80,"bear":65}','v7.2 hong kr.size 90/80/65');
+ ok(t('kr.export')==='{"bull":75,"neutral":65,"bear":50}','v7.2 hong kr.export 75/65/50');
+ ok(t('kr.value')==='{"bull":65,"neutral":50,"bear":35}','v7.2 hong kr.value 65/50/35');
+ ok(t('us.value')==='{"bull":65,"neutral":50,"bear":35}','v7.2 hong us.value 65/50/35');
+ ok(t('us.size')==='{"bull":95,"neutral":90,"bear":75}','v7.2 hong us.size 95/90/75');
+ let out=run("switchingScreen()");
+ ok(out.includes('hong.py')&&out.includes('수출주·가치주·대형주 ▲')&&out.includes('홍춘욱 원전략 (기본)'),'v7.2 스위칭 탭 홍춘욱 표기');
+ run("setStylePreset('data')");
+ ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":75}','v7.2 data kr.size 80/80/75');
+ ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.2 data us.value 50/50/40');
+ ok(t('us.size')==='{"bull":90,"neutral":90,"bear":95}','v7.2 data us.size 90/90/95');
+ out=run("switchingScreen()");
+ ok(out.includes('robust.py'),'v7.2 data 프리셋 근거 표기');
+ run("setStylePreset('bogus')");ok(run('stylePreset()')==='data','v7.2 잘못된 프리셋 무시');
+ run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.2 홍춘욱 복귀');}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
