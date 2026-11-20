@@ -29,7 +29,7 @@ ew = lambda *s: pd.concat(s, axis=1).mean(axis=1, skipna=True)
 ppi = monthly(fred('PPIACO')); m3 = (ppi / ppi.shift(3) - 1) * 100
 # 2026 ISM 실제값(앱 자동수집과 동일 출처)으로 DBnomics 공백 보완
 ism_app = pd.Series({'2026-01': 59.0, '2026-02': 70.5, '2026-03': 78.3, '2026-04': 84.6, '2026-05': 82.1,
-                     '2026-06': 73.0, '2026-07': 71.1, '2026-08': 71.1}); ism_app.index = pd.PeriodIndex(ism_app.index, freq='M')
+                     '2026-06': 73.0, '2026-07': 71.1, '2026-08': 71.1, '2026-09': 77.9, '2026-10': 75.2}); ism_app.index = pd.PeriodIndex(ism_app.index, freq='M')
 ism_full = pd.concat([ism_s, ism_app]); ism_full = ism_full[~ism_full.index.duplicated(keep='last')].sort_index()
 s_ism = pd.concat([sig_series(m3)[:'2020-12'], sig_series(ism_full)['2021-01':]]); s_ism = s_ism[~s_ism.index.duplicated()]
 reg = overall(sig_series(retail_yoy), s_ism).dropna()
@@ -53,7 +53,7 @@ SPREADS = {
     'US 경기민감−방어 (XLI·XLB·XLE − XLP·XLU·XLV)': ew(y('XLI'), y('XLB'), y('XLE')) - ew(y('XLP'), y('XLU'), y('XLV')),
     'US 기술−시장 (XLK−IWB)':               y('XLK') - y('IWB'),
 }
-END = pd.Period('2026-09', 'M')
+END = pd.Period('2026-10', 'M')   # 수익률 마지막 완결월 (2026-11-20 수집)
 
 def table(spreads, start=None, end=END):
     out = []
