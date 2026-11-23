@@ -55,7 +55,7 @@ function applyTheme(name){
 }
 
 const TAG_COLOR={'수출주':'#00BFA6','내수주':'#22D07A','성장주':'#4E8EFF',
-  '가치주':'#FFB020','대형주':'#697FA0','소형주':'#A78BFA','헤지':'#FF4D67','지수':'#8A94A6'};
+  '가치주':'#FFB020','대형주':'#697FA0','소형주':'#A78BFA','헤지':'#FF4D67','지수':'#8A94A6','경기민감':'#00BFA6'};
 // 시장 전체 지수 추종(가치·성장 혼합) — 스타일 진단에서 가치/성장 양쪽에 50:50으로 집계
 const INDEX_TICKERS=new Set(['SPY','VOO','IVV','SPLG','VTI','ITOT','SCHB','SCHX','RSP','UPRO','SSO','SPXL']);
 function isIndexFund(name,ticker){
@@ -1388,12 +1388,12 @@ function getSignal(data){
 }
 function overallSignal(){
   const r=getSignal(portfolio.switching.retail),i=getSignal(portfolio.switching.ism);
-  if(r==='bull'&&i==='bull')return{s:'bull',label:'🟢 경기 강세',sub:stylePreset()==='hong'?'수출주·가치주·대형주 비중 확대':'주식 스타일은 시장 비중 유지 (강세 틸트는 근거 없음)',color:T.green};
+  if(r==='bull'&&i==='bull')return{s:'bull',label:'🟢 경기 강세',sub:stylePreset()==='hong'?'국내 경기민감 70 · 해외 가치 60 (수출·가치·대형 확대)':'주식 스타일은 시장 비중 유지 (강세 틸트는 근거 없음)',color:T.green};
   if(r==='insufficient'||i==='insufficient')return{s:'wait',label:'⏳ 데이터 부족',sub:'지표 데이터를 입력해주세요',color:T.text3};
-  if(r==='bear'&&i==='bear')return{s:'bear',label:'🔴 경기 약세',sub:stylePreset()==='hong'?'내수주·성장주·소형주 비중 확대':'해외 성장주 ▲·대형주 소폭 ▲ · 국내 소형주 소폭 ▲',color:T.red};
-  if(r==='forming'||i==='forming')return{s:'forming',label:'🔶 신호 형성 중',sub:'3개월 연속 상승 조건 미충족 — 현재 비중 유지',color:T.amber};
+  if(r==='bear'&&i==='bear')return{s:'bear',label:'🔴 경기 약세',sub:stylePreset()==='hong'?'국내 방어·성장 65 · 해외 성장 65 (내수·성장·중소형 확대)':'해외 성장주 ▲·대형주 소폭 ▲ · 국내 소형주 소폭 ▲',color:T.red};
+  if(r==='forming'||i==='forming')return{s:'forming',label:'🔶 신호 형성 중',sub:stylePreset()==='hong'?'상승 신호 아님 → 하락/중립 비중 (국내 방어·성장 65 · 해외 성장 65)':'3개월 연속 상승 조건 미충족 — 현재 비중 유지',color:T.amber};
   // 한 지표는 강세, 다른 지표는 약세 → 혼조
-  return{s:'mixed',label:'🔶 지표 혼조',sub:'두 지표가 엇갈림 — 현재 비중 유지, 추세 확인 후 가감',color:T.amber};
+  return{s:'mixed',label:'🔶 지표 혼조',sub:stylePreset()==='hong'?'두 지표가 엇갈림 → 하락/중립 비중 (국내 방어·성장 65 · 해외 성장 65)':'두 지표가 엇갈림 — 현재 비중 유지, 추세 확인 후 가감',color:T.amber};
 }
 
 // ── 가격 업데이트 ──
@@ -1861,38 +1861,43 @@ function applyFixedTargets(){
 
 // ── 주식 버킷 내부 스타일 목표 (국면별, A쪽 %) ──
 // 프리셋 2가지 (portfolio.stylePreset, 기본 'hong')
-//  hong: 홍춘욱 듀얼 스위칭 원 전략 — 강세: 수출·가치·대형 ▲ / 약세: 내수·성장·소형 ▲.
-//        단 국내 대형:소형은 80 고정(v7.3: 코스닥150 강제 편입이 연 ~0.9%p 손해, 소형 쏠림 방지용 가드레일로만 사용).
-//        중립 = 시장 앵커(시가총액 기준), 강세·약세 = 앵커 ±15%p (5~95% 제한). 근거 analysis/style_tilt/hong.py
+//  hong: 홍춘욱 듀얼 스위칭 2단계(v7.3) — 국면을 '상승 신호'(두 지표 MA3 연속↑)와 '하락/중립'으로만 나눔.
+//        국내: 경기민감(수출·가치·대형) : 방어·성장(내수·성장·소형) 한 축 — 상승 70:30 · 하락/중립 35:65
+//        해외: 대형 100%(소형 축 없음, 소형 보유 시 안내만) · 가치 : 성장 — 상승 60:40 · 하락/중립 35:65
+//        근거 analysis/style_tilt/hong.py (2단계 절)
 //  data: 데이터 검증형(v7.1) — 시장 앵커 + 전/후반 부호가 같은 약세 국면만 소폭 틸트. 근거 analysis/style_tilt/robust.py
 //  사용자가 축별로 수동 변경 가능(portfolio.styleTargets).
-const STYLE_PRESETS={hong:'홍춘욱 원전략',data:'데이터 검증형'};
+const STYLE_PRESETS={hong:'홍춘욱 2단계',data:'데이터 검증형'};
 function stylePreset(){return STYLE_PRESETS[portfolio.stylePreset]?portfolio.stylePreset:'hong';}
-const styleAx=(o)=>Object.defineProperties(o,{t:{get(){return this[stylePreset()];}},why:{get(){return this.w[stylePreset()];}}});
-const STYLE_TARGETS={
-  kr:[styleAx({id:'kr.size',a:'대형주',b:'소형주',hong:{bull:80,neutral:80,bear:80},data:{bull:80,neutral:80,bear:75},
-        w:{hong:'국면 무관 80 고정 (KOSPI200 시총 80%) — 소형주 쏠림 방지',data:'KOSPI200≈시총 80% · 약세엔 소형 소폭↑'}}),
-      styleAx({id:'kr.export',a:'수출주',b:'내수주',hong:{bull:75,neutral:65,bear:50},data:{bull:65,neutral:65,bear:65},
-        w:{hong:'강세 수출↑ · 약세 내수↑ (중립 = 수출 섹터 시총 65%)',data:'수출 섹터≈시총 65% · 국면 효과 없음 → 고정'}}),
-      styleAx({id:'kr.value',a:'가치주',b:'성장주',hong:{bull:65,neutral:50,bear:35},data:{bull:50,neutral:50,bear:50},
-        w:{hong:'강세 가치↑ · 약세 성장↑',data:'국면 효과 검증 안 됨 → 50 고정'}})],
-  us:[styleAx({id:'us.value',a:'가치주',b:'성장주',hong:{bull:65,neutral:50,bear:35},data:{bull:50,neutral:50,bear:40},
-        w:{hong:'강세 가치↑ · 약세 성장↑ (중립 = 지수 50:50)',data:'지수 50:50 기준 · 약세엔 성장↑ (장·단기 표본 일관)'}}),
-      styleAx({id:'us.size',a:'대형주',b:'소형주',hong:{bull:95,neutral:90,bear:75},data:{bull:90,neutral:90,bear:95},
-        w:{hong:'강세 대형↑ · 약세 소형↑ (중립 = Russell1000 시총 90%)',data:'Russell1000≈시총 90%+ · 약세엔 대형↑'}})],
+// 경기민감/방어·성장 점수 축: 종목 태그 중 경기민감(수출·가치·대형) 개수 비율만큼 A로 집계
+const CYC_TAGS=['수출주','가치주','대형주'],DEF_TAGS=['내수주','성장주','소형주'];
+const STYLE_SETS={
+  hong:{
+    kr:[{id:'kr.cyc',a:'경기민감',b:'방어·성장',score:true,two:true,t:{bull:70,neutral:35,bear:35},
+         why:'수출·가치·대형 vs 내수·성장·소형 태그 비율로 집계'}],
+    us:[{id:'us.vg',a:'가치주',b:'성장주',two:true,t:{bull:60,neutral:35,bear:35},
+         why:'대형 100% 기준 · 상승 신호에만 가치↑'}],
+  },
+  data:{
+    kr:[{id:'kr.size',a:'대형주',b:'소형주',t:{bull:80,neutral:80,bear:75},why:'KOSPI200≈시총 80% · 약세엔 소형 소폭↑'},
+        {id:'kr.export',a:'수출주',b:'내수주',t:{bull:65,neutral:65,bear:65},why:'수출 섹터≈시총 65% · 국면 효과 없음 → 고정'}],
+    us:[{id:'us.value',a:'가치주',b:'성장주',t:{bull:50,neutral:50,bear:40},why:'지수 50:50 기준 · 약세엔 성장↑ (장·단기 표본 일관)'},
+        {id:'us.size',a:'대형주',b:'소형주',t:{bull:90,neutral:90,bear:95},why:'Russell1000≈시총 90%+ · 약세엔 대형↑'}],
+  },
 };
+const STYLE_TARGETS={get kr(){return STYLE_SETS[stylePreset()].kr;},get us(){return STYLE_SETS[stylePreset()].us;}};
 function setStylePreset(p){if(!STYLE_PRESETS[p])return;portfolio.stylePreset=p;save();render();}
 function styleTarget(ax){const m=(portfolio.styleTargets||{})[ax.id];return m?Object.assign({},ax.t,m):ax.t;}
 function styleIsManual(ax){return !!(portfolio.styleTargets||{})[ax.id];}
-function findStyleAxis(id){return [...STYLE_TARGETS.kr,...STYLE_TARGETS.us].find(a=>a.id===id);}
+function findStyleAxis(id){return Object.values(STYLE_SETS).flatMap(p=>[...p.kr,...p.us]).find(a=>a.id===id);}
 function showStyleTargetModal(id){
   const ax=findStyleAxis(id),cur=styleTarget(ax),k=regimeKey(overallSignal());
   const inp=(rk,lab)=>`<div style="flex:1"><div style="font-size:11px;color:${rk===k?T.teal:T.text3};margin-bottom:4px;text-align:center">${lab}${rk===k?' (현재)':''}</div>
     <input type="number" id="st_${rk}" value="${cur[rk]}" min="0" max="100" step="5" style="font-size:16px;text-align:center;font-family:monospace"></div>`;
   showModal(`<div class="sheet-handle"></div>
     <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:4px">✎ ${ax.a} : ${ax.b} 목표</div>
-    <div style="font-size:12px;color:${T.text3};margin-bottom:14px">${ax.a} 비중(%)을 국면별로 입력하세요. ${ax.b}는 나머지로 자동 계산됩니다.<br>권장값(${STYLE_PRESETS[stylePreset()]}): 강세 ${ax.t.bull} · 중립 ${ax.t.neutral} · 약세 ${ax.t.bear}</div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">${inp('bull','🟢 강세')}${inp('neutral','🔶 중립')}${inp('bear','🔴 약세')}</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:14px">${ax.a} 비중(%)을 국면별로 입력하세요. ${ax.b}는 나머지로 자동 계산됩니다.<br>권장값: ${ax.two?`상승 ${ax.t.bull} · 하락/중립 ${ax.t.bear}`:`강세 ${ax.t.bull} · 중립 ${ax.t.neutral} · 약세 ${ax.t.bear}`}</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">${ax.two?inp('bull','🟢 상승 신호')+inp('bear','🔶🔴 하락/중립'):inp('bull','🟢 강세')+inp('neutral','🔶 중립')+inp('bear','🔴 약세')}</div>
     <div style="display:flex;gap:8px">
       <button onclick="saveStyleTarget('${id}')" class="tap" style="flex:1;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">저장</button>
       <button onclick="resetStyleTarget('${id}')" class="tap" style="flex:1;padding:13px;background:${T.bg3};color:${T.amber};border-radius:12px;font-size:13px">권장값 복원</button>
@@ -1901,11 +1906,12 @@ function showStyleTargetModal(id){
 }
 function saveStyleTarget(id){
   const ax=findStyleAxis(id),v={};
-  for(const rk of['bull','neutral','bear']){
+  for(const rk of ax.two?['bull','bear']:['bull','neutral','bear']){
     const n=parseFloat(document.getElementById('st_'+rk)?.value);
     if(isNaN(n)||n<0||n>100){alert('0~100 사이 숫자를 입력하세요.');return;}
     v[rk]=Math.round(n);
   }
+  if(ax.two)v.neutral=v.bear;
   if(!portfolio.styleTargets)portfolio.styleTargets={};
   if(v.bull===ax.t.bull&&v.neutral===ax.t.neutral&&v.bear===ax.t.bear)delete portfolio.styleTargets[id];
   else portfolio.styleTargets[id]=v;
@@ -1914,9 +1920,11 @@ function saveStyleTarget(id){
 function resetStyleTarget(id){if(portfolio.styleTargets)delete portfolio.styleTargets[id];save();closeModal();render();}
 function resetAllStyleTargets(){portfolio.styleTargets={};save();render();}
 // 버킷 내 축 비중: A/(A+B). '지수'(혼합)는 가치/성장 축에서 50:50 분할, 그 외 미태그 종목은 제외
-function styleAxis(rows,a,b){
+function styleAxis(rows,a,b,score){
   let A=0,B=0;
   rows.forEach(r=>{const t=r.h.tags||[];if(t.includes('헤지'))return;
+    if(score){const c=t.filter(x=>CYC_TAGS.includes(x)).length,f=t.filter(x=>DEF_TAGS.includes(x)).length;
+      if(c+f){A+=r.ev*c/(c+f);B+=r.ev*f/(c+f);}return;}
     if(t.includes(a))A+=r.ev;else if(t.includes(b))B+=r.ev;
     else if(a==='가치주'&&t.includes('지수')){A+=r.ev/2;B+=r.ev/2;}});
   const d=A+B;return{A,B,d,pa:d?A/d*100:null};
@@ -1929,9 +1937,15 @@ function styleBuckets(){
     us:portfolio.holdings.us.filter(h=>!h.keep).map(h=>({h,ev:h.qty*h.cur*(isUsdH('us',h)?EX:1)})),
   };
 }
+// 홍춘욱 2단계: 해외는 대형 100% — 소형주 보유분만 안내(매도 권유 없이 신규 매수는 대형으로)
+function usSmallNote(rows){
+  const sm=rows.filter(r=>(r.h.tags||[]).includes('소형주')).reduce((s,r)=>s+r.ev,0),tot=rows.reduce((s,r)=>s+r.ev,0);
+  if(!sm||!tot)return `<div style="font-size:10px;color:${T.green};margin-bottom:4px">✓ 대형주 100% (소형주 없음)</div>`;
+  return `<div style="font-size:10px;color:${T.amber};margin-bottom:4px">소형주 ${(sm/tot*100).toFixed(0)}% (≈${won(sm,true)}) — 대형 100% 원칙: 신규 매수는 대형으로</div>`;
+}
 function styleTiltCard(){
   const k=regimeKey(overallSignal()),B=styleBuckets();
-  const kLabel=k==='bull'?'🟢 강세':k==='bear'?'🔴 약세':'🔶 중립';
+  const kLabel=stylePreset()==='hong'?(k==='bull'?'🟢 상승 신호':'🔶 하락/중립'):(k==='bull'?'🟢 강세':k==='bear'?'🔴 약세':'🔶 중립');
   const bucket=(key,title)=>{
     const rows=B[key],total=rows.reduce((s,r)=>s+r.ev,0);
     if(!total)return keptEntries().some(e=>e.cat===key)?`<div style="margin-top:10px;font-size:11px;color:${T.amber}">${title}: 전 종목 🔒 장기보유 — 스타일 계산 대상 없음</div>`:'';
@@ -1940,7 +1954,7 @@ function styleTiltCard(){
     return `<div style="margin-top:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:${T.text};margin-bottom:6px"><span>${title}</span><span class="mono" style="color:${T.text3};font-weight:400">${won(total,true)}</span></div>
       ${STYLE_TARGETS[key].map(ax=>{
-        const r=styleAxis(rows,ax.a,ax.b),tg=styleTarget(ax)[k],man=styleIsManual(ax);
+        const r=styleAxis(rows,ax.a,ax.b,ax.score),tg=styleTarget(ax)[k],man=styleIsManual(ax);
         if(r.pa==null)return `<div onclick="showStyleTargetModal('${ax.id}')" class="tap" style="font-size:11px;color:${T.text3};margin-bottom:6px">${ax.a}/${ax.b}: 분류된 종목 없음 · 목표 ${tg} : ${100-tg} ✎</div>`;
         const gap=tg-r.pa,amt=Math.abs(gap)/100*r.d,ok=Math.abs(gap)<5;
         const side=gap>0?ax.a:ax.b,col=ok?T.green:T.amber;
@@ -1950,7 +1964,7 @@ function styleTiltCard(){
             <span class="mono"><span style="color:${T.text}">${r.pa.toFixed(0)} : ${(100-r.pa).toFixed(0)}</span> <span style="color:${man?T.purple:T.text3}">→ 목표 ${tg} : ${100-tg}${man?' (수동)':''} ✎</span></span>
           </div>
           <div style="height:6px;background:${T.bg3};border-radius:3px;margin:6px 0 5px;position:relative;overflow:hidden">
-            <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,r.pa).toFixed(1)}%;background:${TAG_COLOR[ax.a]}"></div>
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,r.pa).toFixed(1)}%;background:${TAG_COLOR[ax.a]||T.teal}"></div>
             <div style="position:absolute;left:${tg}%;top:-2px;bottom:-2px;width:2px;background:${T.text}"></div>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:10px">
@@ -1958,6 +1972,7 @@ function styleTiltCard(){
             <span style="color:${col};font-weight:700;white-space:nowrap">${ok?'✓ 적정 범위':`${side} ▲ ${Math.abs(gap).toFixed(0)}%p (≈${won(amt,true)})`}</span>
           </div>
         </div>`;}).join('')}
+      ${key==='us'&&stylePreset()==='hong'?usSmallNote(rows):''}
       ${hedge>0?`<div style="font-size:10px;color:${T.text3}">🛡 헤지(인버스) ${(hedge/total*100).toFixed(1)}% — 스타일 계산 제외</div>`:''}
       ${kept.length?`<div style="font-size:10px;color:${T.amber}">🔒 장기보유 ${kept.length}종목 ${won(kept.reduce((s,e)=>s+entryValue(e),0),true)} — 스타일 계산 제외</div>`:''}
     </div>`;
@@ -1973,7 +1988,7 @@ function styleTiltCard(){
     ${bucket('us','🌏 해외주식')}
     ${keptSummary().n?`<button onclick="showKeepModal()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">🔒 장기보유(제외) 종목 관리</button>`:''}
     ${Object.keys(portfolio.styleTargets||{}).length?`<button onclick="resetAllStyleTargets()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">전체 권장값으로 복원</button>`:''}
-    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">${stylePreset()==='hong'?'홍춘욱 원전략: 중립은 시가총액 기준, 강세는 수출·가치·대형 +15%p, 약세는 내수·성장·소형 +15%p입니다. 국내 대형:소형만 80 : 20 고정(analysis/style_tilt/hong.py).':'데이터 검증형: 시가총액 기준에 약세 국면만 소폭 틸트한 값입니다(analysis/style_tilt/robust.py, 2010~ 워크포워드 검증).'} 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 국면 틸트 효과는 백테스트상 연 ±0.5%p 이내라 자산군 비중(고정 ${Object.values(FIXED_TARGETS).join('/')})이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
+    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">${stylePreset()==='hong'?'홍춘욱 2단계: 두 지표가 모두 3개월 연속 상승일 때만 상승 비중, 그 밖에는 하락/중립 비중입니다. 국내는 태그(수출·가치·대형 vs 내수·성장·소형) 비율로 경기민감:방어·성장을 셉니다(analysis/style_tilt/hong.py).':'데이터 검증형: 시가총액 기준에 약세 국면만 소폭 틸트한 값입니다(analysis/style_tilt/robust.py, 2010~ 워크포워드 검증).'} 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 국면 틸트 효과는 백테스트상 연 ±0.6%p 이내라 자산군 비중(고정 ${Object.values(FIXED_TARGETS).join('/')})이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
   </div>`;
 }
 
@@ -2056,12 +2071,11 @@ function switchingScreen(){
       <div style="font-size:13px;font-weight:700;color:${T.text};margin-bottom:6px">듀얼 스위칭 전략 (홍춘욱)</div>
       <div style="font-size:12px;color:${T.text2};line-height:1.7">
         두 지표 <b style="color:${T.teal}">모두 MA3 3개월 연속 ↑</b> → 🟢 경기 강세<br>
-        둘 다 ↓ → 🔴 경기 약세 · 한쪽만 ↑ 또는 엇갈림 → 🔶 중립(비중 유지)<br>
-        ${stylePreset()==='hong'?`<span style="color:${T.green}">강세: 수출주·가치주·대형주 ▲ (국내 수출75·가치65, 해외 가치65·대형95)</span><br>
-        <span style="color:${T.text2}">중립: 시장 비중 (국내 수출65·가치50, 해외 가치50·대형90)</span><br>
-        <span style="color:${T.red}">약세: 내수주·성장주·소형주 ▲ (국내 내수50·성장65, 해외 성장65·소형25)</span><br>
-        <span style="color:${T.text2}">국내 대형:소형은 국면과 무관하게 80 : 20 고정(소형주 쏠림 방지)</span><br>
-        <span style="color:${T.text3};font-size:11px">참고: 백테스트상 미국은 약세 때 소형주보다 대형주가 우위였습니다. 데이터 기준 비중은 위 스타일 목표 카드에서 '데이터 검증형'으로 바꿀 수 있습니다</span><br>`:`<span style="color:${T.teal}">강세·중립: 시장 비중 (국내 대형80·수출65, 해외 가치50·대형90)</span><br><span style="color:${T.amber}">약세: 해외 성장 60 · 해외 대형 95 · 국내 소형 25</span><br>
+        둘 다 ↓ → 🔴 경기 약세 · 한쪽만 ↑ 또는 엇갈림 → 🔶 중립${stylePreset()==='hong'?'':'(비중 유지)'}<br>
+        ${stylePreset()==='hong'?`<span style="color:${T.green}">🟢 상승 신호: 수출주·가치주·대형주 확대 — 국내 경기민감 70 : 방어·성장 30 · 해외 가치 60 : 성장 40</span><br>
+        <span style="color:${T.amber}">🔶🔴 하락/중립: 내수주·성장주·중소형주 확대 — 국내 경기민감 35 : 방어·성장 65 · 해외 가치 35 : 성장 65</span><br>
+        <span style="color:${T.text2}">해외는 대형주 100% (소형주 축 없음)</span><br>
+        <span style="color:${T.text3};font-size:11px">참고: 백테스트상 국면 전환 효과는 50:50 고정 대비 연 −0.6~+0.1%p로 작습니다. 데이터 기준 비중은 위 스타일 목표 카드에서 '데이터 검증형'으로 바꿀 수 있습니다</span><br>`:`<span style="color:${T.teal}">강세·중립: 시장 비중 (국내 대형80·수출65, 해외 가치50·대형90)</span><br><span style="color:${T.amber}">약세: 해외 성장 60 · 해외 대형 95 · 국내 소형 25</span><br>
         <span style="color:${T.text3};font-size:11px">원 전략의 강세 틸트(대형·가치↑)는 하위기간마다 방향이 뒤집혀 미채택. '약세→소형주'는 미국에선 반대(대형 우위), 국내는 소폭만. 수출/내수는 국면 차이 없음</span><br>`}
         <span style="color:${T.text3};font-size:11px">소매판매: 전전월치 발표 (6월→4월) · ISM: 전월치 발표 (6월→5월)</span>
       </div>
