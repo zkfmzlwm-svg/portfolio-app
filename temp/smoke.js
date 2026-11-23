@@ -122,7 +122,8 @@ ok(!!silver,"'1Q 은액티브' 숫자 시작 종목명 인식");
 // missing 감지: 본문에 국내가 나왔으니 안 나온 국내 종목이 missing
 ok(d.missing.some(m=>m.entry.cat==='kr'),'누락 국내종목 감지 ('+d.missing.length+')');
 
-// 6. 신호
+// 6. 신호 (소매판매+ISM 국면 판정은 데이터 검증형 프리셋에서 사용 — v7.4부터 기본은 듀얼 스위칭)
+run("portfolio.stylePreset='data'");
 const sig=run('overallSignal()');
 console.log('현재 신호:',sig.label,sig.s);
 ok(['bull','bear','forming','mixed','wait'].includes(sig.s),'유효 신호 상태');
@@ -132,6 +133,7 @@ run("portfolio.switching.ism=[{ym:'2026-01',val:90},{ym:'2026-02',val:80},{ym:'2
 const mixed=run('overallSignal()');
 ok(mixed.s==='mixed'||mixed.s==='bear','한쪽 bull 한쪽 bear → 혼조/약세 처리, got '+mixed.s);
 ok(run('regimeKey(overallSignal())')==='neutral','혼조→중립 프리셋');
+run("portfolio.stylePreset='hong'");ok(run('overallSignal().s')==='dual','기본 프리셋은 듀얼 스위칭 신호');
 
 // 7. 워치리스트 자체 알고리즘 (목표가 상승여력 + PER 저평가도 스코어링, 자동 제외/정렬)
 run(`portfolio.holdings.watchlist=[
@@ -317,32 +319,43 @@ run("showTradeModal('kr','s4','buy')");pass++;
 run("showTradeModal('crypto','c1','sell')");pass++;
 run("closeModal()");
 run("showBackup()");pass++;
-// v7.3: 홍춘욱 2단계(기본) — 국내 경기민감:방어·성장 70/35, 해외 가치:성장 60/35(대형 100%) · 선택 데이터 검증형(v7.1)
+run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
+// v7.4: 듀얼 스위칭(기본) — 수출/내수는 소매판매, 가치/성장은 10년물, 신호 없으면 직전 유지
 {const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
- ok(run('stylePreset()')==='hong','v7.3 기본 프리셋 = 홍춘욱 2단계');
- ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.cyc"]','v7.3 국내 축 1개');
- ok(JSON.stringify(run("STYLE_TARGETS.us.map(a=>a.id)"))==='["us.vg"]','v7.3 해외 축 1개(소형 축 없음)');
- ok(t('kr.cyc')==='{"bull":70,"neutral":35,"bear":35}','v7.3 kr.cyc 70/35/35');
- ok(t('us.vg')==='{"bull":60,"neutral":35,"bear":35}','v7.3 us.vg 60/35/35');
- // 점수 축: 삼성전자[수출,대형]=경기민감 100%, 에스티팜[성장,소형]=0%, KB[내수,가치,대형]=2/3
- const sc=run(`styleAxis([{h:{tags:['수출주','대형주']},ev:100},{h:{tags:['성장주','소형주']},ev:100},{h:{tags:['내수주','가치주','대형주']},ev:300},{h:{tags:['헤지']},ev:999},{h:{tags:[]},ev:50}],'경기민감','방어·성장',true)`);
- ok(Math.abs(sc.A-300)<1e-9&&Math.abs(sc.B-200)<1e-9&&Math.abs(sc.pa-60)<1e-9,'v7.3 경기민감 점수 집계 '+JSON.stringify(sc));
+ ok(run('stylePreset()')==='hong','v7.4 기본 프리셋 = 듀얼 스위칭');
+ ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.exp","kr.val"]','v7.4 국내 축 2개');
+ ok(JSON.stringify(run("STYLE_TARGETS.us.map(a=>a.id)"))==='["us.val"]','v7.4 해외 축 1개(대형 100%)');
+ ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.4 kr.exp 75/30');
+ ok(t('kr.val')==='{"up":65,"down":30,"none":50}','v7.4 kr.val 65/30');
+ ok(t('us.val')==='{"up":65,"down":30,"none":50}','v7.4 us.val 65/30');
+ // 초기 데이터: 소매판매 7→10월 3개월 연속↑ → 수출, 10년물 10월 5.13 vs 7월 4.60 → 가치
+ ok(run('retailState().s')==='up'&&run('rateState().s')==='up','v7.4 초기 신호 수출·가치 '+run('JSON.stringify([retailState(),rateState()])'));
+ ok(Math.abs(run('rateState().chg')-0.53)<1e-9,'v7.4 10년물 3개월 변화 +0.53');
+ // 유지 규칙: 2개월만 하락하면 직전(수출) 유지, 3개월 연속 하락하면 내수
+ const bak=run("JSON.stringify(portfolio.switching)");
+ run("portfolio.switching.retail.push({ym:'2026-11',val:6.0},{ym:'2026-12',val:5.5})");
+ ok(run('retailState().s')==='up','v7.4 2개월 하락 → 수출 유지');
+ run("portfolio.switching.retail.push({ym:'2027-01',val:5.0})");
+ ok(run('retailState().s')==='down'&&run('retailState().since')==='2027-01','v7.4 3개월 연속 하락 → 내수');
+ run("portfolio.switching.rate.push({ym:'2026-11',val:4.9},{ym:'2026-12',val:4.7},{ym:'2027-01',val:4.5})");
+ ok(run('rateState().s')==='down','v7.4 10년물 3개월 전보다 ↓ → 성장');
+ ok(run('overallSignal().label').includes('내수주')&&run('overallSignal().label').includes('성장주'),'v7.4 신호 라벨');
  let out=run("switchingScreen()");
- ok(out.includes('경기민감 : 방어·성장')&&out.includes('홍춘욱 2단계 (기본)')&&out.includes('해외는 대형주 100%'),'v7.3 스위칭 탭 표기');
- ok(out.includes('대형 100% 원칙')||out.includes('대형주 100% (소형주 없음)'),'v7.3 해외 소형 안내');
- ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.3 렌더 깨짐 없음');
+ ok(out.includes('수출 30 : 내수 70')&&out.includes('💵 미 국채 10년물')&&out.includes('국내 2×2 칸 목표'),'v7.4 스위칭 탭 표기');
+ ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.4 렌더 깨짐 없음');
+ run(`portfolio.switching=${bak}`);
+ // 데이터 부족 → 신호 없음(50)
+ run("portfolio.switching.rate=[{ym:'2026-10',val:5.1}]");ok(run('rateState().s')==='none','v7.4 데이터 부족 → 신호 없음');
+ out=run("switchingScreen()");ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.4 신호 없음 렌더');
+ run(`portfolio.switching=${bak}`);
+ ok(JSON.stringify(run("Object.keys(normalizePortfolio({holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],alts:[]},switching:{retail:[],ism:[]}}).switching)"))==='["retail","ism","rate"]','v7.4 rate 시계열 정규화');
  run("setStylePreset('data')");
- ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.size","kr.export"]','v7.3 data 국내 축');
- ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":75}','v7.3 data kr.size 80/80/75');
- ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.3 data us.value 50/50/40');
- ok(t('us.size')==='{"bull":90,"neutral":90,"bear":95}','v7.3 data us.size 90/90/95');
- out=run("switchingScreen()");
- ok(out.includes('robust.py')&&!out.includes('undefined'),'v7.3 data 프리셋 근거 표기');
- run("setStylePreset('bogus')");ok(run('stylePreset()')==='data','v7.3 잘못된 프리셋 무시');
- run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.3 홍춘욱 복귀');
- // 2단계 축 수동 저장: neutral = bear 로 맞춰짐
- run("portfolio.styleTargets={'kr.cyc':{bull:75,neutral:40,bear:40}}");
- ok(t('kr.cyc')==='{"bull":75,"neutral":40,"bear":40}','v7.3 수동 값 반영');
- run("resetAllStyleTargets()");ok(t('kr.cyc')==='{"bull":70,"neutral":35,"bear":35}','v7.3 권장값 복원');}
+ ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.size","kr.export"]','v7.4 data 국내 축');
+ ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.4 data us.value 50/50/40');
+ ok(run('overallSignal().s')!=='dual','v7.4 data 프리셋은 기존 국면 신호');
+ out=run("switchingScreen()");ok(out.includes('robust.py')&&!out.includes('undefined'),'v7.4 data 프리셋 렌더');
+ run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.4 복귀');
+ run("portfolio.styleTargets={'kr.exp':{up:80,down:25,none:50}}");ok(t('kr.exp')==='{"up":80,"down":25,"none":50}','v7.4 수동 값');
+ run("resetAllStyleTargets()");ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.4 권장값 복원');}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
