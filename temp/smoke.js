@@ -122,18 +122,12 @@ ok(!!silver,"'1Q 은액티브' 숫자 시작 종목명 인식");
 // missing 감지: 본문에 국내가 나왔으니 안 나온 국내 종목이 missing
 ok(d.missing.some(m=>m.entry.cat==='kr'),'누락 국내종목 감지 ('+d.missing.length+')');
 
-// 6. 신호 (소매판매+ISM 국면 판정은 데이터 검증형 프리셋에서 사용 — v7.4부터 기본은 듀얼 스위칭)
-run("portfolio.stylePreset='data'");
+// 6. 신호 (v7.7: 듀얼 스위칭만 — 고정 목표 비중 카드·데이터 검증형 프리셋 삭제)
 const sig=run('overallSignal()');
 console.log('현재 신호:',sig.label,sig.s);
-ok(['bull','bear','forming','mixed','wait'].includes(sig.s),'유효 신호 상태');
-// 혼조 테스트
-run("portfolio.switching.retail=[{ym:'2026-01',val:1},{ym:'2026-02',val:2},{ym:'2026-03',val:3},{ym:'2026-04',val:4},{ym:'2026-05',val:5}];");
-run("portfolio.switching.ism=[{ym:'2026-01',val:90},{ym:'2026-02',val:80},{ym:'2026-03',val:70},{ym:'2026-04',val:60},{ym:'2026-05',val:50}];");
-const mixed=run('overallSignal()');
-ok(mixed.s==='mixed'||mixed.s==='bear','한쪽 bull 한쪽 bear → 혼조/약세 처리, got '+mixed.s);
-ok(run('regimeKey(overallSignal())')==='neutral','혼조→중립 프리셋');
-run("portfolio.stylePreset='hong'");ok(run('overallSignal().s')==='dual','기본 프리셋은 듀얼 스위칭 신호');
+ok(sig.s==='dual','듀얼 스위칭 신호');
+ok(run("typeof fixedTargetCard==='undefined'&&typeof setStylePreset==='undefined'&&typeof regimeKey==='undefined'"),'v7.7 고정 비중 카드·프리셋 함수 삭제');
+ok(!run('switchingScreen()').includes('고정 목표 비중')&&!run('switchingScreen()').includes('데이터 검증형'),'v7.7 스위칭 탭에서 삭제');
 
 // 7. 워치리스트 자체 알고리즘 (목표가 상승여력 + PER 저평가도 스코어링, 자동 제외/정렬)
 run(`portfolio.holdings.watchlist=[
@@ -322,7 +316,6 @@ run("showBackup()");pass++;
 run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
 // v7.6: 듀얼 스위칭(기본) — 경기(소매판매+ISM 동시) → 국내 수출/내수, 금리 → 해외 가치/성장, 엇갈리면 직전 유지
 {const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
- ok(run('stylePreset()')==='hong','v7.6 기본 프리셋 = 듀얼 스위칭');
  ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.exp"]','v7.6 국내 축 1개(수출/내수)');
  ok(JSON.stringify(run("STYLE_TARGETS.us.map(a=>a.id)"))==='["us.val"]','v7.6 해외 축 1개(가치/성장)');
  ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.6 kr.exp 75/30');
@@ -351,11 +344,6 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  out=run("switchingScreen()");ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.6 신호 없음 렌더');
  run(`portfolio.switching=${bak}`);
  ok(JSON.stringify(run("Object.keys(normalizePortfolio({holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],alts:[]},switching:{retail:[],ism:[]}}).switching)"))==='["retail","ism","rate"]','v7.6 rate 시계열 정규화');
- run("setStylePreset('data')");
- ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.size","kr.export"]','v7.6 data 국내 축');
- ok(run('overallSignal().s')!=='dual','v7.6 data 프리셋은 기존 국면 신호');
- out=run("switchingScreen()");ok(out.includes('robust.py')&&!out.includes('undefined'),'v7.6 data 프리셋 렌더');
- run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.6 복귀');
  run("portfolio.styleTargets={'kr.exp':{up:80,down:25,none:50}}");ok(t('kr.exp')==='{"up":80,"down":25,"none":50}','v7.6 수동 값');
  run("resetAllStyleTargets()");ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.6 권장값 복원');}
 // v7.5: 4칸 재분류 마이그레이션 (1회) — 코드 기준 CLASS4, 미등록 종목은 빠진 칸만 키워드 보충
