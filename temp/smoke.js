@@ -320,43 +320,44 @@ run("showTradeModal('crypto','c1','sell')");pass++;
 run("closeModal()");
 run("showBackup()");pass++;
 run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
-// v7.4: 듀얼 스위칭(기본) — 수출/내수는 소매판매, 가치/성장은 10년물, 신호 없으면 직전 유지
+// v7.6: 듀얼 스위칭(기본) — 경기(소매판매+ISM 동시) → 국내 수출/내수, 금리 → 해외 가치/성장, 엇갈리면 직전 유지
 {const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
- ok(run('stylePreset()')==='hong','v7.4 기본 프리셋 = 듀얼 스위칭');
- ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.exp","kr.val"]','v7.4 국내 축 2개');
- ok(JSON.stringify(run("STYLE_TARGETS.us.map(a=>a.id)"))==='["us.val"]','v7.4 해외 축 1개(대형 100%)');
- ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.4 kr.exp 75/30');
- ok(t('kr.val')==='{"up":65,"down":30,"none":50}','v7.4 kr.val 65/30');
- ok(t('us.val')==='{"up":65,"down":30,"none":50}','v7.4 us.val 65/30');
- // 초기 데이터: 소매판매 7→10월 3개월 연속↑ → 수출, 10년물 10월 5.13 vs 7월 4.60 → 가치
- ok(run('retailState().s')==='up'&&run('rateState().s')==='up','v7.4 초기 신호 수출·가치 '+run('JSON.stringify([retailState(),rateState()])'));
- ok(Math.abs(run('rateState().chg')-0.53)<1e-9,'v7.4 10년물 3개월 변화 +0.53');
- // 유지 규칙: 2개월만 하락하면 직전(수출) 유지, 3개월 연속 하락하면 내수
+ ok(run('stylePreset()')==='hong','v7.6 기본 프리셋 = 듀얼 스위칭');
+ ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.exp"]','v7.6 국내 축 1개(수출/내수)');
+ ok(JSON.stringify(run("STYLE_TARGETS.us.map(a=>a.id)"))==='["us.val"]','v7.6 해외 축 1개(가치/성장)');
+ ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.6 kr.exp 75/30');
+ ok(t('us.val')==='{"up":65,"down":30,"none":50}','v7.6 us.val 65/30');
+ // 초기 데이터: 소매판매 7→10월 3개월 연속↑, ISM MA3 9·10월 2회 연속↑ → 수출, 10년물 10월 5.13 vs 7월 4.60 → 가치
+ ok(run('retailState().s')==='up'&&run('ismState().s')==='up'&&run('econState().s')==='up','v7.6 초기 경기 신호 수출 '+run('JSON.stringify(econState())'));
+ ok(run('rateState().s')==='up'&&Math.abs(run('rateState().chg')-0.53)<1e-9,'v7.6 초기 금리 신호 가치 +0.53');
  const bak=run("JSON.stringify(portfolio.switching)");
- run("portfolio.switching.retail.push({ym:'2026-11',val:6.0},{ym:'2026-12',val:5.5})");
- ok(run('retailState().s')==='up','v7.4 2개월 하락 → 수출 유지');
- run("portfolio.switching.retail.push({ym:'2027-01',val:5.0})");
- ok(run('retailState().s')==='down'&&run('retailState().since')==='2027-01','v7.4 3개월 연속 하락 → 내수');
+ // 소매판매만 3개월 연속 하락 → ISM은 여전히 ↑ → 엇갈림 → 수출 유지
+ run("portfolio.switching.retail.push({ym:'2026-11',val:6.0},{ym:'2026-12',val:5.5},{ym:'2027-01',val:5.0})");
+ ok(run('retailState().s')==='down','v7.6 소매판매 3개월 연속 하락');
+ ok(run('econState().s')==='up','v7.6 ISM과 엇갈리면 수출 유지');
+ // ISM도 하락 추세 → 둘 다 ↓ → 내수
+ run("portfolio.switching.ism.push({ym:'2026-11',val:70},{ym:'2026-12',val:65},{ym:'2027-01',val:60},{ym:'2027-02',val:55})");
+ ok(run('ismState().s')==='down'&&run('econState().s')==='down','v7.6 둘 다 ↓ → 내수 '+run('JSON.stringify(econState())'));
  run("portfolio.switching.rate.push({ym:'2026-11',val:4.9},{ym:'2026-12',val:4.7},{ym:'2027-01',val:4.5})");
- ok(run('rateState().s')==='down','v7.4 10년물 3개월 전보다 ↓ → 성장');
- ok(run('overallSignal().label').includes('내수주')&&run('overallSignal().label').includes('성장주'),'v7.4 신호 라벨');
+ ok(run('rateState().s')==='down','v7.6 10년물 ↓ → 성장');
+ ok(run('overallSignal().label').includes('내수주')&&run('overallSignal().label').includes('성장주'),'v7.6 신호 라벨');
+ ok(run('overallSignal().sub').includes('경기 ↓ (소매판매 ↓ · ISM ↓) · 금리 ↓'),'v7.6 한 줄 요약 '+run('overallSignal().sub'));
  let out=run("switchingScreen()");
- ok(out.includes('수출 30 : 내수 70')&&out.includes('💵 미 국채 10년물')&&out.includes('국내 2×2 칸 목표'),'v7.4 스위칭 탭 표기');
- ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.4 렌더 깨짐 없음');
+ ok(out.includes('국내 수출 30 : 내수 70')&&out.includes('🏭 ISM 제조업 가격지수 → 경기')&&out.includes('💵 미 국채 10년물')&&!out.includes('2×2 칸'),'v7.6 스위칭 탭 표기');
+ ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.6 렌더 깨짐 없음');
  run(`portfolio.switching=${bak}`);
- // 데이터 부족 → 신호 없음(50)
- run("portfolio.switching.rate=[{ym:'2026-10',val:5.1}]");ok(run('rateState().s')==='none','v7.4 데이터 부족 → 신호 없음');
- out=run("switchingScreen()");ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.4 신호 없음 렌더');
+ run("portfolio.switching.rate=[{ym:'2026-10',val:5.1}]");ok(run('rateState().s')==='none','v7.6 데이터 부족 → 신호 없음');
+ run("portfolio.switching.ism=[{ym:'2026-10',val:75}]");ok(run('econState().s')==='none','v7.6 ISM 부족 → 경기 신호 없음');
+ out=run("switchingScreen()");ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.6 신호 없음 렌더');
  run(`portfolio.switching=${bak}`);
- ok(JSON.stringify(run("Object.keys(normalizePortfolio({holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],alts:[]},switching:{retail:[],ism:[]}}).switching)"))==='["retail","ism","rate"]','v7.4 rate 시계열 정규화');
+ ok(JSON.stringify(run("Object.keys(normalizePortfolio({holdings:{kr_stocks:[],kr_etfs:[],us:[],bonds:[],alts:[]},switching:{retail:[],ism:[]}}).switching)"))==='["retail","ism","rate"]','v7.6 rate 시계열 정규화');
  run("setStylePreset('data')");
- ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.size","kr.export"]','v7.4 data 국내 축');
- ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.4 data us.value 50/50/40');
- ok(run('overallSignal().s')!=='dual','v7.4 data 프리셋은 기존 국면 신호');
- out=run("switchingScreen()");ok(out.includes('robust.py')&&!out.includes('undefined'),'v7.4 data 프리셋 렌더');
- run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.4 복귀');
- run("portfolio.styleTargets={'kr.exp':{up:80,down:25,none:50}}");ok(t('kr.exp')==='{"up":80,"down":25,"none":50}','v7.4 수동 값');
- run("resetAllStyleTargets()");ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.4 권장값 복원');}
+ ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.size","kr.export"]','v7.6 data 국내 축');
+ ok(run('overallSignal().s')!=='dual','v7.6 data 프리셋은 기존 국면 신호');
+ out=run("switchingScreen()");ok(out.includes('robust.py')&&!out.includes('undefined'),'v7.6 data 프리셋 렌더');
+ run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.6 복귀');
+ run("portfolio.styleTargets={'kr.exp':{up:80,down:25,none:50}}");ok(t('kr.exp')==='{"up":80,"down":25,"none":50}','v7.6 수동 값');
+ run("resetAllStyleTargets()");ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.6 권장값 복원');}
 // v7.5: 4칸 재분류 마이그레이션 (1회) — 코드 기준 CLASS4, 미등록 종목은 빠진 칸만 키워드 보충
 {const old=JSON.parse(run("JSON.stringify(INIT)"));delete old.tag4;
  old.holdings.kr_stocks.push({id:'x1',name:'기아',code:'000270',qty:1,avg:1,cur:1,tags:['수출주','대형주']},

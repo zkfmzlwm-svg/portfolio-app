@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v7.5.0</title>
+<title>포트폴리오 v7.6.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -1441,35 +1441,55 @@ function getSignal(data){
   if(r1)return'forming';       // 직전월만 상승 (형성 초기)
   return'bear';                // 하락
 }
-// v7.4 듀얼 스위칭(기본): 두 신호를 따로 판정, 3개월 추세가 없으면 직전 상태 유지
-//  수출/내수: 미국 소매판매 YoY가 3개월 연속 상승 → 'up'(수출), 3개월 연속 하락 → 'down'(내수)
-//  가치/성장: 미 국채 10년물 월평균이 3개월 전보다 높음 → 'up'(가치), 낮음 → 'down'(성장)
-//  근거: analysis/sector_switch (한국 1990~, 미국 1954~)
-function retailState(){
-  const v=portfolio.switching.retail.filter(d=>d.val!==null);let st='none',since=null;
-  for(let i=3;i<v.length;i++){
-    const up=v[i].val>v[i-1].val&&v[i-1].val>v[i-2].val&&v[i-2].val>v[i-3].val;
-    const dn=v[i].val<v[i-1].val&&v[i-1].val<v[i-2].val&&v[i-2].val<v[i-3].val;
-    const ns=up?'up':dn?'down':st;if(ns!==st){st=ns;since=v[i].ym;}
-  }
-  return{s:st,since,last:v.length?v[v.length-1]:null,n:v.length};
+// v7.6 듀얼 스위칭(기본): 두 질문을 따로 판정, 추세가 없으면 직전 상태 유지 (근거: analysis/sector_switch)
+//  경기 → 국내 수출/내수: 미국 소매판매 YoY 3개월 연속↑ 그리고 ISM 가격지수 MA3 2회 연속↑ → 'up'(수출),
+//                       둘 다 반대 방향 → 'down'(내수), 엇갈리면 유지. 한국 1990~ +2.98%p/년(t 2.40)
+//  금리 → 해외 가치/성장: 미 국채 10년물 월평균이 3개월 전보다 ↑ → 'up'(가치), ↓ → 'down'(성장)
+//  세 지표를 하나로 합치면 모든 방식에서 성과가 나빠져(combo_check.py) 계산은 따로, 화면 요약만 한 줄로.
+const addYm=(ym,k)=>{let[y,m]=ym.split('-').map(Number);m+=k;while(m>12){m-=12;y++;}return y+'-'+String(m).padStart(2,'0');};
+function stSeries(v,upF,dnF,from){   // 상태기계: up/down 조건이 아니면 직전 유지 → [{ym,s}]
+  let st='none';const out=[];
+  for(let i=from;i<v.length;i++){st=upF(i)?'up':dnF(i)?'down':st;out.push({ym:v[i].ym,s:st});}
+  return out;
+}
+function lastState(ser){let since=null;for(let i=ser.length-1;i>=0&&ser[i].s===(ser[ser.length-1]||{}).s;i--)since=ser[i].ym;
+  const s=ser.length?ser[ser.length-1].s:'none';return{s,since:s==='none'?null:since};}
+function retailSeries(){
+  const v=portfolio.switching.retail.filter(d=>d.val!==null);
+  return stSeries(v,i=>v[i].val>v[i-1].val&&v[i-1].val>v[i-2].val&&v[i-2].val>v[i-3].val,
+                    i=>v[i].val<v[i-1].val&&v[i-1].val<v[i-2].val&&v[i-2].val<v[i-3].val,3);
+}
+function retailState(){const v=portfolio.switching.retail.filter(d=>d.val!==null);return Object.assign(lastState(retailSeries()),{last:v.length?v[v.length-1]:null,n:v.length});}
+function ismSeries(){
+  const ma=calcMA3Arr(portfolio.switching.ism);
+  return stSeries(ma,i=>ma[i].ma3>ma[i-1].ma3&&ma[i-1].ma3>ma[i-2].ma3,i=>ma[i].ma3<ma[i-1].ma3&&ma[i-1].ma3<ma[i-2].ma3,2);
+}
+function ismState(){const v=portfolio.switching.ism.filter(d=>d.val!==null);return Object.assign(lastState(ismSeries()),{last:v.length?v[v.length-1]:null,n:v.length});}
+// 경기 신호: 발표 시차를 맞춰(소매판매 데이터월+2, ISM +1 = 적용월) 두 상태가 같은 방향일 때만 전환
+function econState(){
+  const rs=retailSeries(),is=ismSeries(),ev={};
+  rs.forEach(x=>{(ev[addYm(x.ym,2)]=ev[addYm(x.ym,2)]||{}).r=x.s;});
+  is.forEach(x=>{(ev[addYm(x.ym,1)]=ev[addYm(x.ym,1)]||{}).i=x.s;});
+  let r='none',q='none',st='none',since=null;
+  Object.keys(ev).sort().forEach(m=>{if(ev[m].r)r=ev[m].r;if(ev[m].i)q=ev[m].i;
+    const ns=r==='up'&&q==='up'?'up':r==='down'&&q==='down'?'down':st;if(ns!==st){st=ns;since=m;}});
+  return{s:st,since,r:retailState(),i:ismState()};
 }
 function rateState(){
-  const v=portfolio.switching.rate.filter(d=>d.val!==null);let st='none',since=null,chg=null;
-  for(let i=3;i<v.length;i++){
-    chg=Math.round((v[i].val-v[i-3].val)*100)/100;
-    const ns=chg>0?'up':chg<0?'down':st;if(ns!==st){st=ns;since=v[i].ym;}
-  }
-  return{s:st,since,chg,last:v.length?v[v.length-1]:null,n:v.length};
+  const v=portfolio.switching.rate.filter(d=>d.val!==null);
+  const ser=stSeries(v,i=>v[i].val>v[i-3].val,i=>v[i].val<v[i-3].val,3);
+  const chg=v.length>3?Math.round((v[v.length-1].val-v[v.length-4].val)*100)/100:null;
+  return Object.assign(lastState(ser),{chg,last:v.length?v[v.length-1]:null,n:v.length});
 }
-const SIG_TXT={retail:{up:'수출주',down:'내수주',none:'신호 없음'},rate:{up:'가치주',down:'성장주',none:'신호 없음'}};
-function sigState(k){return k==='retail'?retailState().s:rateState().s;}
+const SIG_TXT={econ:{up:'수출주',down:'내수주',none:'신호 없음'},retail:{up:'↑',down:'↓',none:'추세 없음'},ism:{up:'↑',down:'↓',none:'추세 없음'},rate:{up:'가치주',down:'성장주',none:'신호 없음'}};
+function sigState(k){return k==='econ'?econState().s:k==='retail'?retailState().s:k==='ism'?ismState().s:rateState().s;}
+const arw=s=>s==='up'?'↑':s==='down'?'↓':'→';
 function dualSignal(){
-  const r=retailState(),q=rateState(),t=k=>styleTarget(findStyleAxis(k))[k==='kr.exp'?r.s:q.s];
+  const e=econState(),q=rateState(),te=styleTarget(findStyleAxis('kr.exp'))[e.s],tv=styleTarget(findStyleAxis('us.val'))[q.s];
   const lab=(k,st)=>st==='none'?'⏸ '+SIG_TXT[k].none:(st==='up'?'🟢 ':'🔵 ')+SIG_TXT[k][st];
-  return{s:'dual',label:`${lab('retail',r.s)} · ${lab('rate',q.s)}`,
-    sub:`국내 수출 ${t('kr.exp')} : 내수 ${100-t('kr.exp')} · 가치 ${t('kr.val')} : 성장 ${100-t('kr.val')} / 해외 가치 ${t('us.val')} : 성장 ${100-t('us.val')} (대형 100%)`,
-    color:T.teal,r,q};
+  return{s:'dual',label:`${lab('econ',e.s)} · ${lab('rate',q.s)}`,
+    sub:`경기 ${arw(e.s)} (소매판매 ${arw(e.r.s)} · ISM ${arw(e.i.s)}) · 금리 ${arw(q.s)} → 국내 수출 ${te} : 내수 ${100-te} · 해외 가치 ${tv} : 성장 ${100-tv} (대형 100%)`,
+    color:T.teal,e,q};
 }
 function overallSignal(){
   if(stylePreset()==='hong')return dualSignal();
@@ -1947,17 +1967,16 @@ function applyFixedTargets(){
 
 // ── 주식 버킷 내부 스타일 목표 (A쪽 %) ──
 // 프리셋 2가지 (portfolio.stylePreset, 기본 'hong')
-//  hong: 듀얼 스위칭(v7.4) — 축마다 자기 신호로 판정 (sig: 'retail' 소매판매 / 'rate' 10년물), 신호 없으면 직전 유지
-//        국내 수출:내수 = 수출 신호 75:25 · 내수 신호 30:70 / 국내·해외 가치:성장 = 금리↑ 65:35 · 금리↓ 30:70 / 해외 대형 100%
-//        근거 analysis/sector_switch (한국 1990~ 2×2 규칙 4칸 고정 대비 +2.0%p/년, 미국 가치/성장 1954~)
+//  hong: 듀얼 스위칭(v7.6) — 축마다 자기 신호로 판정 (sig: 'econ' 소매판매+ISM / 'rate' 10년물), 신호 없으면 직전 유지
+//        국내 수출:내수 = 수출 신호 75:25 · 내수 신호 30:70 / 해외 가치:성장 = 금리↑ 65:35 · 금리↓ 30:70 / 해외 대형 100%
+//        국내 가치:성장은 금리 효과가 한국 1990~에서 없어(+0.76%p, t 1.08) 단순화로 제외. 근거 analysis/sector_switch
 //  data: 데이터 검증형(v7.1) — 시장 앵커 + 전/후반 부호가 같은 약세 국면만 소폭 틸트. 근거 analysis/style_tilt/robust.py
 //  사용자가 축별로 수동 변경 가능(portfolio.styleTargets).
 const STYLE_PRESETS={hong:'듀얼 스위칭',data:'데이터 검증형'};
 function stylePreset(){return STYLE_PRESETS[portfolio.stylePreset]?portfolio.stylePreset:'hong';}
 const STYLE_SETS={
   hong:{
-    kr:[{id:'kr.exp',a:'수출주',b:'내수주',sig:'retail',t:{up:75,down:30,none:50},why:'미국 소매판매 YoY 3개월 연속↑ 수출 · ↓ 내수 · 그 외 유지'},
-        {id:'kr.val',a:'가치주',b:'성장주',sig:'rate',t:{up:65,down:30,none:50},why:'미 10년물이 3개월 전보다 ↑ 가치 · ↓ 성장'}],
+    kr:[{id:'kr.exp',a:'수출주',b:'내수주',sig:'econ',t:{up:75,down:30,none:50},why:'소매판매·ISM 둘 다 ↑ 수출 · 둘 다 ↓ 내수 · 엇갈리면 유지'}],
     us:[{id:'us.val',a:'가치주',b:'성장주',sig:'rate',t:{up:65,down:30,none:50},why:'미 10년물이 3개월 전보다 ↑ 가치 · ↓ 성장 (대형 100%)'}],
   },
   data:{
@@ -2020,18 +2039,6 @@ function styleBuckets(){
   };
 }
 // 홍춘욱 2단계: 해외는 대형 100% — 소형주 보유분만 안내(매도 권유 없이 신규 매수는 대형으로)
-// 국내 2×2 칸 목표(수출·내수 목표 × 가치·성장 목표)와 현재(두 축 태그가 모두 있는 종목 기준)
-function kr2x2(rows){
-  const e=styleTarget(findStyleAxis('kr.exp'))[sigState('retail')]/100,v=styleTarget(findStyleAxis('kr.val'))[sigState('rate')]/100;
-  const C=[['수출주','가치주','자동차·가전·철강·화학'],['수출주','성장주','반도체·조선·전력기기·2차전지'],['내수주','가치주','은행·보험·통신·필수소비'],['내수주','성장주','헬스케어·바이오·게임·플랫폼']];
-  const tg=[e*v,e*(1-v),(1-e)*v,(1-e)*(1-v)];
-  const cur=C.map(([x,y])=>rows.filter(r=>{const t=r.h.tags||[];return!t.includes('헤지')&&t.includes(x)&&t.includes(y);}).reduce((s,r)=>s+r.ev,0));
-  const tot=cur.reduce((a,b)=>a+b,0);
-  return `<div style="background:${T.bg2};border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:11px">
-    <div style="color:${T.text2};font-weight:700;margin-bottom:4px">국내 2×2 칸 목표${tot?' · 현재(두 태그 모두 있는 종목)':''}</div>
-    ${C.map(([x,y,ex],i)=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:${T.text2}">${x.slice(0,2)}×${y.slice(0,2)} <span style="color:${T.text3}">${ex}</span></span><span class="mono" style="color:${T.text}">${Math.round(tg[i]*100)}%${tot?` <span style="color:${T.text3}">· ${Math.round(cur[i]/tot*100)}%</span>`:''}</span></div>`).join('')}
-  </div>`;
-}
 function usSmallNote(rows){
   const sm=rows.filter(r=>(r.h.tags||[]).includes('소형주')).reduce((s,r)=>s+r.ev,0),tot=rows.reduce((s,r)=>s+r.ev,0);
   if(!sm||!tot)return `<div style="font-size:10px;color:${T.green};margin-bottom:4px">✓ 대형주 100% (소형주 없음)</div>`;
@@ -2066,7 +2073,6 @@ function styleTiltCard(){
             <span style="color:${col};font-weight:700;white-space:nowrap">${ok?'✓ 적정 범위':`${side} ▲ ${Math.abs(gap).toFixed(0)}%p (≈${won(amt,true)})`}</span>
           </div>
         </div>`;}).join('')}
-      ${key==='kr'&&stylePreset()==='hong'?kr2x2(rows):''}
       ${key==='us'&&stylePreset()==='hong'?usSmallNote(rows):''}
       ${hedge>0?`<div style="font-size:10px;color:${T.text3}">🛡 헤지(인버스) ${(hedge/total*100).toFixed(1)}% — 스타일 계산 제외</div>`:''}
       ${kept.length?`<div style="font-size:10px;color:${T.amber}">🔒 장기보유 ${kept.length}종목 ${won(kept.reduce((s,e)=>s+entryValue(e),0),true)} — 스타일 계산 제외</div>`:''}
@@ -2083,7 +2089,7 @@ function styleTiltCard(){
     ${bucket('us','🌏 해외주식')}
     ${keptSummary().n?`<button onclick="showKeepModal()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">🔒 장기보유(제외) 종목 관리</button>`:''}
     ${Object.keys(portfolio.styleTargets||{}).length?`<button onclick="resetAllStyleTargets()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">전체 권장값으로 복원</button>`:''}
-    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">${stylePreset()==='hong'?'듀얼 스위칭: 수출:내수는 미국 소매판매, 가치:성장은 미 국채 10년물로 따로 판정하고, 3개월 추세가 없으면 직전 비중을 유지합니다(analysis/sector_switch).':'데이터 검증형: 시가총액 기준에 약세 국면만 소폭 틸트한 값입니다(analysis/style_tilt/robust.py, 2010~ 워크포워드 검증).'} 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 국면 틸트 효과는 백테스트상 연 ±2%p 이내라 자산군 비중(고정 ${Object.values(FIXED_TARGETS).join('/')})이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
+    <div style="font-size:10px;color:${T.text3};margin-top:6px;line-height:1.5">${stylePreset()==='hong'?'듀얼 스위칭: 국내 수출:내수는 경기(소매판매+ISM), 해외 가치:성장은 미 국채 10년물로 따로 판정하고, 신호가 없으면 직전 비중을 유지합니다(analysis/sector_switch).':'데이터 검증형: 시가총액 기준에 약세 국면만 소폭 틸트한 값입니다(analysis/style_tilt/robust.py, 2010~ 워크포워드 검증).'} 각 줄을 눌러 국면별 목표를 직접 바꿀 수 있습니다. 국면 틸트 효과는 백테스트상 연 ±2%p 이내라 자산군 비중(고정 ${Object.values(FIXED_TARGETS).join('/')})이 우선입니다. '지수'(S&P500 등)는 가치/성장 50:50으로 집계.</div>
   </div>`;
 }
 
@@ -2099,10 +2105,12 @@ function switchingScreen(){
     let risingCount=ma.slice(-4).reduce((cnt,_,i,arr)=>i>0&&arr[i].ma3>arr[i-1].ma3?cnt+1:cnt,0);
     let subLine=`MA3 연속↑ ${risingCount}회`,col3='MA3';
     const vv=data.filter(d=>d.val!==null),vIdx={};vv.forEach((d,i)=>{vIdx[d.ym]=i;});
+    if(mode==='ism'){const st=ismState();sc=st.s==='up'?T.green:st.s==='down'?T.blue:T.text3;
+      sl=st.s==='none'?'⏸ 추세 없음':st.s==='up'?'🟢 상승 추세':'🔵 하락 추세';if(st.since)subLine+=` · ${st.since}부터`;mode='ma3';}
     if(mode!=='ma3'){
       const st=mode==='raw'?retailState():rateState(),sk=mode==='raw'?'retail':'rate';
       sc=st.s==='up'?T.green:st.s==='down'?T.blue:T.text3;
-      sl=st.s==='none'?'⏸ 신호 없음':(st.s==='up'?'🟢 ':'🔵 ')+SIG_TXT[sk][st.s];
+      sl=st.s==='none'?'⏸ 추세 없음':mode==='raw'?(st.s==='up'?'🟢 상승 추세':'🔵 하락 추세'):(st.s==='up'?'🟢 ':'🔵 ')+SIG_TXT[sk][st.s];
       if(mode==='raw'){let u=0,dn=0;for(let i=vv.length-1;i>0&&vv[i].val>vv[i-1].val;i--)u++;for(let i=vv.length-1;i>0&&vv[i].val<vv[i-1].val;i--)dn++;
         subLine=u?`연속↑ ${u}개월`:dn?`연속↓ ${dn}개월`:'보합';col3='전월 대비';}
       else{subLine=st.chg!=null?`3개월 변화 ${st.chg>0?'+':''}${st.chg.toFixed(2)}%p`:'데이터 부족';col3='3개월 변화';}
@@ -2183,22 +2191,22 @@ function switchingScreen(){
       <div style="font-size:12px;color:${T.text2};line-height:1.7">
         ${stylePreset()==='hong'?`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">
           <tr style="color:${T.text3}"><td style="padding:3px 0">신호</td><td>판단</td><td style="text-align:right">비중</td></tr>
-          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">소매판매 3개월 연속 ↑</td><td style="color:${T.green}">수출주</td><td class="mono" style="text-align:right">수출 75 : 내수 25</td></tr>
-          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">소매판매 3개월 연속 ↓</td><td style="color:${T.blue}">내수주</td><td class="mono" style="text-align:right">수출 30 : 내수 70</td></tr>
-          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">10년물 3개월 전보다 ↑</td><td style="color:${T.green}">가치주</td><td class="mono" style="text-align:right">가치 65 : 성장 35</td></tr>
-          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">10년물 3개월 전보다 ↓</td><td style="color:${T.blue}">성장주</td><td class="mono" style="text-align:right">가치 30 : 성장 70</td></tr>
+          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">소매판매 ↑ · ISM ↑</td><td style="color:${T.green}">수출주</td><td class="mono" style="text-align:right">국내 수출 75 : 내수 25</td></tr>
+          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">소매판매 ↓ · ISM ↓</td><td style="color:${T.blue}">내수주</td><td class="mono" style="text-align:right">국내 수출 30 : 내수 70</td></tr>
+          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">10년물 3개월 전보다 ↑</td><td style="color:${T.green}">가치주</td><td class="mono" style="text-align:right">해외 가치 65 : 성장 35</td></tr>
+          <tr style="border-top:1px solid ${T.border}"><td style="padding:4px 0">10년물 3개월 전보다 ↓</td><td style="color:${T.blue}">성장주</td><td class="mono" style="text-align:right">해외 가치 30 : 성장 70</td></tr>
         </table>
-        신호가 없으면 직전 비중 유지 · 가치:성장은 국내·해외 공통 · 해외는 대형주 100%<br>
-        <span style="color:${T.text3};font-size:11px">근거(analysis/sector_switch): 한국 1990~ 2×2 규칙이 4칸 고정보다 연 +2.0%p(10년마다 모두 우위) · 금리 신호는 미국 1954~에서 유효, 한국 단독으론 약함</span><br>`:`두 지표 <b style="color:${T.teal}">모두 MA3 3개월 연속 ↑</b> → 🟢 경기 강세<br>
+        엇갈리거나 추세가 없으면 직전 비중 유지 · 해외는 대형주 100%<br>
+        <span style="color:${T.text3};font-size:11px">근거(analysis/sector_switch): 소매판매+ISM 동시 조건이 한국 1990~ 4칸 고정보다 연 +3.0%p(10년마다 모두 우위) · 10년물 신호는 미국 1954~에서 유효 · 세 지표를 하나로 합치면 성과가 나빠짐</span><br>`:`두 지표 <b style="color:${T.teal}">모두 MA3 3개월 연속 ↑</b> → 🟢 경기 강세<br>
         둘 다 ↓ → 🔴 경기 약세 · 한쪽만 ↑ 또는 엇갈림 → 🔶 중립(비중 유지)<br>
         <span style="color:${T.teal}">강세·중립: 시장 비중 (국내 대형80·수출65, 해외 가치50·대형90)</span><br><span style="color:${T.amber}">약세: 해외 성장 60 · 해외 대형 95 · 국내 소형 25</span><br>
         <span style="color:${T.text3};font-size:11px">원 전략의 강세 틸트(대형·가치↑)는 하위기간마다 방향이 뒤집혀 미채택. '약세→소형주'는 미국에선 반대(대형 우위), 국내는 소폭만. 수출/내수는 국면 차이 없음</span><br>`}
         <span style="color:${T.text3};font-size:11px">소매판매: 전전월치 발표 (6월→4월) · ISM: 전월치 발표 (6월→5월)</span>
       </div>
     </div>
-    ${stylePreset()==='hong'?`${renderInd('retail','🛍 미국 소매판매 증가율 (YoY) → 수출/내수','%','3개월 연속 ↑ 수출 · ↓ 내수 · 그 외 유지','raw')}
-    ${renderInd('rate','💵 미 국채 10년물 금리 → 가치/성장','%','월평균 · 3개월 전보다 ↑ 가치 · ↓ 성장','chg3')}
-    ${renderInd('ism','🏭 ISM 제조업 가격지수 (참고)','pt','데이터 검증형 프리셋에서 사용 · 3개월 이동평균')}`
+    ${stylePreset()==='hong'?`${renderInd('retail','🛍 미국 소매판매 증가율 (YoY) → 경기','%','3개월 연속 ↑/↓ · ISM과 같은 방향이면 수출/내수 전환','raw')}
+    ${renderInd('ism','🏭 ISM 제조업 가격지수 → 경기','pt','3개월 이동평균 2회 연속 ↑/↓ · 소매판매와 같은 방향이면 전환','ism')}
+    ${renderInd('rate','💵 미 국채 10년물 금리 → 해외 가치/성장','%','월평균 · 3개월 전보다 ↑ 가치 · ↓ 성장','chg3')}`
     :`${renderInd('retail','🛍 미국 소매판매 증가율 (YoY)','%','전년동기대비 3개월 이동평균')}
     ${renderInd('ism','🏭 ISM 제조업 가격지수','pt','전월 대비 3개월 이동평균')}`}
   </div>`;
@@ -3410,7 +3418,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.5.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.6.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -4351,17 +4359,17 @@ function _doReset(){
 function sigStyle(s){return s==='bull'?{c:T.green,t:'🟢 충족'}:s==='forming'?{c:T.amber,t:'🔶 형성중'}:s==='bear'?{c:T.red,t:'🔴 미충족'}:{c:T.text3,t:'⏳ 데이터 부족'};}
 function renderSignalBox(sig){
   if(sig.s==='dual'){
-    const it=(k,st,extra)=>{const c=st.s==='up'?T.green:st.s==='down'?T.blue:T.text3;
-      return `<div style="text-align:center;flex:1"><div style="color:${T.text3};margin-bottom:3px">${k==='retail'?'소매판매 → 수출/내수':'10년물 → 가치/성장'}</div>
-        <div style="color:${c};font-weight:700">${st.s==='none'?'⏸ 신호 없음':(st.s==='up'?'🟢 ':'🔵 ')+SIG_TXT[k][st.s]}</div>
-        <div style="color:${T.text3};font-size:10px;margin-top:2px">${extra}</div></div>`;};
+    const it=(title,st,txt,extra)=>{const c=st==='up'?T.green:st==='down'?T.blue:T.text3;
+      return `<div style="text-align:center;flex:1"><div style="color:${T.text3};margin-bottom:3px">${title}</div>
+        <div style="color:${c};font-weight:700">${txt}</div><div style="color:${T.text3};font-size:10px;margin-top:2px">${extra}</div></div>`;};
+    const e=sig.e,q=sig.q;
     return `<div style="background:${sig.color}0F;border:1px solid ${sig.color}33;border-radius:16px;padding:18px;text-align:center">
     <div style="font-size:20px;font-weight:800;color:${sig.color};margin-bottom:6px">${sig.label}</div>
     <div style="font-size:12px;color:${T.text2}">${sig.sub}</div>
     <div style="margin-top:14px;display:flex;gap:12px;justify-content:center;font-size:12px">
-      ${it('retail',sig.r,sig.r.last?`${sig.r.last.ym} ${sig.r.last.val}%`:'')}
+      ${it('경기 → 국내 수출/내수',e.s,e.s==='none'?'⏸ 신호 없음':(e.s==='up'?'🟢 ':'🔵 ')+SIG_TXT.econ[e.s],`소매판매 ${arw(e.r.s)}${e.r.last?' '+e.r.last.val+'%':''} · ISM ${arw(e.i.s)}${e.i.last?' '+e.i.last.val:''}`)}
       <div style="width:1px;background:${T.border}"></div>
-      ${it('rate',sig.q,sig.q.last?`${sig.q.last.ym} ${sig.q.last.val}% (3개월 ${sig.q.chg>0?'+':''}${sig.q.chg??'-'}%p)`:'')}
+      ${it('금리 → 해외 가치/성장',q.s,q.s==='none'?'⏸ 신호 없음':(q.s==='up'?'🟢 ':'🔵 ')+SIG_TXT.rate[q.s],q.last?`${q.last.ym} ${q.last.val}% (3개월 ${q.chg>0?'+':''}${q.chg??'-'}%p)`:'')}
     </div>
   </div>`;
   }
