@@ -357,5 +357,30 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.4 복귀');
  run("portfolio.styleTargets={'kr.exp':{up:80,down:25,none:50}}");ok(t('kr.exp')==='{"up":80,"down":25,"none":50}','v7.4 수동 값');
  run("resetAllStyleTargets()");ok(t('kr.exp')==='{"up":75,"down":30,"none":50}','v7.4 권장값 복원');}
+// v7.5: 4칸 재분류 마이그레이션 (1회) — 코드 기준 CLASS4, 미등록 종목은 빠진 칸만 키워드 보충
+{const old=JSON.parse(run("JSON.stringify(INIT)"));delete old.tag4;
+ old.holdings.kr_stocks.push({id:'x1',name:'기아',code:'000270',qty:1,avg:1,cur:1,tags:['수출주','대형주']},
+                             {id:'x2',name:'한국가스공사',code:'036460',qty:1,avg:1,cur:1,tags:['대형주']},
+                             {id:'x3',name:'내맘대로',code:'999999',qty:1,avg:1,cur:1,tags:['내수주','가치주']});
+ old.holdings.kr_stocks.find(h=>h.id==='s4').tags=['수출주','대형주'];
+ const m=run(`(()=>{const p=${JSON.stringify(old)};migratePortfolio(p);return p;})()`);
+ const tg=id=>JSON.stringify((m.holdings.kr_stocks.find(h=>h.id===id)||m.holdings.kr_etfs.find(h=>h.id===id)||m.holdings.us.find(h=>h.id===id)).tags);
+ ok(m.tag4===1,'v7.5 재분류 플래그');
+ ok(tg('s4')==='["수출주","성장주","대형주"]','v7.5 삼성전자 수출·성장 '+tg('s4'));
+ ok(tg('s3')==='["수출주","성장주","대형주"]','v7.5 LS ELECTRIC 수출·성장');
+ ok(tg('s6')==='["수출주","가치주","대형주"]','v7.5 LG전자 수출·가치');
+ ok(tg('s1')==='["내수주","성장주","소형주"]','v7.5 에스티팜 내수·성장');
+ ok(tg('e3')==='["수출주","성장주","대형주"]','v7.5 조선TOP10 수출·성장');
+ ok(tg('x1')==='["수출주","가치주","대형주"]','v7.5 직접 추가 기아 → CLASS4');
+ ok(tg('x2')==='["대형주","내수주","가치주"]','v7.5 미등록 가스공사 → 빠진 칸 보충 '+tg('x2'));
+ ok(tg('x3')==='["내수주","가치주"]','v7.5 미등록·완전 태그는 그대로');
+ ok(tg('ue1')==='["지수","대형주"]'&&tg('u2')==='["가치주","대형주"]','v7.5 해외 유지');
+ // 2회차: 사용자가 바꾼 미등록 종목 태그는 다시 건드리지 않음
+ m.holdings.kr_stocks.find(h=>h.id==='x2').tags=['대형주'];
+ const m2=run(`(()=>{const p=${JSON.stringify(m)};migratePortfolio(p);return p;})()`);
+ ok(JSON.stringify(m2.holdings.kr_stocks.find(h=>h.id==='x2').tags)==='["대형주"]','v7.5 재분류는 1회만');
+ ok(JSON.stringify(run("autoTagByName('KODEX 은행',false)"))==='["내수주","가치주"]','v7.5 키워드 은행 → 내수·가치');
+ ok(JSON.stringify(run("autoTagByName('TIGER 반도체TOP10',false)"))==='["수출주","대형주","성장주"]','v7.5 키워드 반도체 → 수출·성장');
+ ok(!JSON.stringify(run("autoTagByName('Some Growth Fund',true)")).includes('수출'),'v7.5 해외는 수출/내수 없음');}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

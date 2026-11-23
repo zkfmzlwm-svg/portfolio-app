@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v7.4.0</title>
+<title>포트폴리오 v7.5.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -288,16 +288,16 @@ const INIT={
   targets:{kr:20,us:35,bonds:5,gold:25,crypto:15},
   holdings:{
     kr_stocks:[
-      {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['성장주','소형주'],eps:1782,indPer:50},
-      {id:'s2',name:'삼천당제약',code:'000250',qty:13.436057,avg:453713,cur:170400,tags:['성장주','소형주'],eps:226,indPer:50},
-      {id:'s3',name:'LS ELECTRIC',code:'010120',qty:1,avg:302996,cur:214500,tags:['수출주','가치주','대형주'],eps:5000,indPer:20},
-      {id:'s4',name:'삼성전자',code:'005930',qty:9.058985,avg:295790,cur:257500,tags:['수출주','대형주']},
-      {id:'s6',name:'LG전자',code:'066570',qty:8.003564,avg:186237,cur:200000,tags:['수출주','대형주']},
-      {id:'s7',name:'HLB생명과학',code:'067630',qty:5.933531,avg:1685,cur:1680,tags:['성장주','소형주']},
+      {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['내수주','성장주','소형주'],eps:1782,indPer:50},
+      {id:'s2',name:'삼천당제약',code:'000250',qty:13.436057,avg:453713,cur:170400,tags:['내수주','성장주','소형주'],eps:226,indPer:50},
+      {id:'s3',name:'LS ELECTRIC',code:'010120',qty:1,avg:302996,cur:214500,tags:['수출주','성장주','대형주'],eps:5000,indPer:20},
+      {id:'s4',name:'삼성전자',code:'005930',qty:9.058985,avg:295790,cur:257500,tags:['수출주','성장주','대형주']},
+      {id:'s6',name:'LG전자',code:'066570',qty:8.003564,avg:186237,cur:200000,tags:['수출주','가치주','대형주']},
+      {id:'s7',name:'HLB생명과학',code:'067630',qty:5.933531,avg:1685,cur:1680,tags:['내수주','성장주','소형주']},
     ],
     kr_etfs:[
       {id:'e1',name:'RISE AI전력인프라',code:'0101N0',qty:18,avg:24053,cur:20520,tags:['수출주','성장주']},
-      {id:'e3',name:'TIGER 조선TOP10',code:'494670',qty:132,avg:27066,cur:22245,tags:['수출주','가치주']},
+      {id:'e3',name:'TIGER 조선TOP10',code:'494670',qty:132,avg:27066,cur:22245,tags:['수출주','성장주','대형주']},
       {id:'e4',name:'KODEX AI반도체핵심장비',code:'471990',qty:22,avg:28069,cur:24100,tags:['수출주','성장주']},
       {id:'e5',name:'KODEX 2차전지핵심소재',code:'461950',qty:29,avg:7310,cur:5210,tags:['수출주','성장주']},
     ],
@@ -332,24 +332,24 @@ const INIT={
     ],
     watchlist:[
       // 대형주
-      {id:'w1',name:'삼성전자',code:'005930',cur:329000,tags:['수출주','대형주'],eps:46900,indPer:15,targetPrice:500000},
-      {id:'w2',name:'SK하이닉스',code:'000660',cur:233300,tags:['수출주','대형주'],eps:290000,indPer:15,targetPrice:340000},
-      {id:'w3',name:'LG에너지솔루션',code:'373220',cur:380000,tags:['수출주','대형주'],eps:8500,indPer:30,targetPrice:520000},
+      {id:'w1',name:'삼성전자',code:'005930',cur:329000,tags:['수출주','성장주','대형주'],eps:46900,indPer:15,targetPrice:500000},
+      {id:'w2',name:'SK하이닉스',code:'000660',cur:233300,tags:['수출주','성장주','대형주'],eps:290000,indPer:15,targetPrice:340000},
+      {id:'w3',name:'LG에너지솔루션',code:'373220',cur:380000,tags:['수출주','성장주','대형주'],eps:8500,indPer:30,targetPrice:520000},
       // 소형주
-      {id:'w4',name:'HPSP',code:'403870',cur:66300,tags:['수출주','소형주'],eps:2104,indPer:32,targetPrice:90000},
-      {id:'w5',name:'리노공업',code:'058470',cur:175000,tags:['수출주','소형주'],eps:6800,indPer:25,targetPrice:230000},
-      {id:'w6',name:'파크시스템스',code:'140860',cur:215000,tags:['수출주','소형주'],eps:5400,indPer:35,targetPrice:280000},
+      {id:'w4',name:'HPSP',code:'403870',cur:66300,tags:['수출주','성장주','소형주'],eps:2104,indPer:32,targetPrice:90000},
+      {id:'w5',name:'리노공업',code:'058470',cur:175000,tags:['수출주','성장주','소형주'],eps:6800,indPer:25,targetPrice:230000},
+      {id:'w6',name:'파크시스템스',code:'140860',cur:215000,tags:['수출주','성장주','소형주'],eps:5400,indPer:35,targetPrice:280000},
       // 가치주
       {id:'w7',name:'KB금융',code:'105560',cur:95000,tags:['내수주','가치주','대형주'],eps:16500,indPer:7,targetPrice:120000},
       {id:'w8',name:'기아',code:'000270',cur:105000,tags:['수출주','가치주','대형주'],eps:21000,indPer:5,targetPrice:140000},
-      {id:'w9',name:'HD현대중공업',code:'329180',cur:380000,tags:['수출주','가치주','대형주'],eps:12000,indPer:18,targetPrice:550000},
+      {id:'w9',name:'HD현대중공업',code:'329180',cur:380000,tags:['수출주','성장주','대형주'],eps:12000,indPer:18,targetPrice:550000},
       // 성장주
-      {id:'w10',name:'에코프로비엠',code:'247540',cur:170000,tags:['수출주','성장주'],eps:1500,indPer:40,targetPrice:220000},
-      {id:'w11',name:'알테오젠',code:'196170',cur:380000,tags:['성장주','소형주'],eps:3200,indPer:60,targetPrice:550000},
+      {id:'w10',name:'에코프로비엠',code:'247540',cur:170000,tags:['수출주','성장주','대형주'],eps:1500,indPer:40,targetPrice:220000},
+      {id:'w11',name:'알테오젠',code:'196170',cur:380000,tags:['내수주','성장주','대형주'],eps:3200,indPer:60,targetPrice:550000},
       {id:'w12',name:'펄어비스',code:'263750',cur:42000,tags:['내수주','성장주','소형주'],eps:800,indPer:45,targetPrice:60000},
       // 내수주
       {id:'w13',name:'KT&G',code:'033780',cur:128000,tags:['내수주','가치주','대형주'],eps:9500,indPer:13,targetPrice:160000},
-      {id:'w14',name:'CJ제일제당',code:'097950',cur:280000,tags:['내수주','가치주'],eps:24000,indPer:11,targetPrice:380000},
+      {id:'w14',name:'CJ제일제당',code:'097950',cur:280000,tags:['내수주','가치주','대형주'],eps:24000,indPer:11,targetPrice:380000},
       {id:'w15',name:'하이트진로',code:'000080',cur:22000,tags:['내수주','가치주','소형주'],eps:1300,indPer:16,targetPrice:30000},
       // 수출주
       {id:'w16',name:'현대차',code:'005380',cur:490000,tags:['수출주','가치주','대형주'],eps:42000,indPer:6,targetPrice:750000},
@@ -386,53 +386,81 @@ const INIT={
 };
 
 // ── 기존 데이터 마이그레이션 (tags 필드 없는 종목 자동 분류) ──
+// v7.5 4칸 재분류 (analysis/sector_switch 2×2)
+//  수출/내수 = 업종: 수출 = 반도체·IT·전자·자동차·조선·철강·화학·2차전지·전력기기·방산 / 내수 = 금융·통신·유틸·필수소비·헬스케어·바이오·엔터·게임·플랫폼
+//  가치/성장 = 재무 특성(2026-11 네이버 지표): 가치 = 배당수익률 3% 이상 또는 (흑자이면서 PBR 1.2배 이하), 그 외 성장
+//  해외 종목은 수출/내수 없이 가치/성장·대형/소형만. 지수 ETF는 '지수'(가치/성장 50:50).
 const TAG_MAP={
   // 국내 개별주
-  's1':['성장주','소형주'],          // 에스티팜 (바이오 소형)
-  's2':['성장주','소형주'],          // 삼천당제약 (바이오 소형)
-  's3':['수출주','가치주','대형주'], // LS ELECTRIC (전력기기 수출 대형)
-  's4':['수출주','대형주'],          // 삼성전자
-  's5':['수출주','대형주'],          // SK하이닉스
-  's6':['수출주','대형주'],          // LG전자
+  's1':['내수주','성장주','소형주'],          // 에스티팜 (헬스케어 CDMO, PBR 2.3)
+  's2':['내수주','성장주','소형주'],          // 삼천당제약 (제약, PBR 11)
+  's3':['수출주','성장주','대형주'],          // LS ELECTRIC (전력기기, PBR 7.7)
+  's4':['수출주','성장주','대형주'],          // 삼성전자 (반도체, PBR 1.9 · 배당 0.9%)
+  's5':['수출주','성장주','대형주'],          // SK하이닉스 (반도체, PBR 2.5)
+  's6':['수출주','가치주','대형주'],          // LG전자 (가전, PBR 0.9)
+  's7':['내수주','성장주','소형주'],          // HLB생명과학 (바이오, 적자)
   // 국내 ETF
-  'e1':['수출주','성장주'],          // RISE AI전력인프라
-  'e2':['내수주','성장주'],          // RISE K엔터
-  'e3':['수출주','가치주'],          // TIGER 조선TOP10
-  'e4':['수출주','성장주'],          // KODEX AI반도체장비
-  'e5':['수출주','성장주'],          // KODEX 2차전지소재
-  'e6':['수출주','성장주'],          // TIGER AI전력SMR
-  'e7':['헤지'],                    // KODEX 인버스
+  'e1':['수출주','성장주'],                  // RISE AI전력인프라
+  'e2':['내수주','성장주'],                  // RISE K엔터
+  'e3':['수출주','성장주','대형주'],          // TIGER 조선TOP10 (상위 4종목 중 3개 PBR 1.6~2.6)
+  'e4':['수출주','성장주','소형주'],          // KODEX AI반도체핵심장비 (중소형 장비주)
+  'e5':['수출주','성장주'],                  // KODEX 2차전지핵심소재
+  'e6':['수출주','성장주'],                  // TIGER AI전력SMR
+  'e7':['헤지'],                            // KODEX 인버스
   // 해외 개별주
-  'u1':['성장주','소형주'],          // JOBY (도심항공 소형)
-  'u2':['가치주','대형주'],          // CAH (의약품유통 가치 대형)
-  'u3':['가치주','대형주'],          // COR (의약품유통 가치 대형)
-  'u4':['가치주','대형주'],          // MCK (의약품유통 가치 대형)
+  'u1':['성장주','소형주'],                  // JOBY
+  'u2':['가치주','대형주'],                  // CAH (의약품 유통)
+  'u3':['가치주','대형주'],                  // COR
+  'u4':['가치주','대형주'],                  // MCK
   // 해외 ETF
-  'u5':['지수','대형주'],           // UPRO (S&P500 3배 — 지수 추종, 가치·성장 혼합)
-  'ue1':['지수','대형주'],           // SPY (S&P500 — 가치·성장 혼합)
-  'ue2':['지수','대형주'],           // VOO (S&P500 — 가치·성장 혼합)
-  'ue3':['성장주','대형주'],         // JEPQ (NASDAQ 커버드콜)
+  'u5':['지수','대형주'],                    // UPRO
+  'ue1':['지수','대형주'],                   // SPY
+  'ue2':['지수','대형주'],                   // VOO
+  'ue3':['성장주','대형주'],                 // JEPQ
   // 채권
-  'b1':['가치주'],                  // BND (종합채권)
-  'b2':['가치주'],                  // SHY (단기국채)
-  'b3':['가치주'],                  // TLT (장기국채)
-  // 워치리스트는 INIT에서 tags 직접 지정 (TAG_MAP 미사용)
+  'b1':['가치주'],'b2':['가치주'],'b3':['가치주'],
 };
+// 코드·티커 기준 4칸 분류 — 직접 추가한 종목(ID가 달라도)에도 v7.5 1회 마이그레이션에서 적용
+const CLASS4={
+  // 국내 개별주
+  '237690':['내수주','성장주','소형주'],'000250':['내수주','성장주','소형주'],'067630':['내수주','성장주','소형주'],
+  '010120':['수출주','성장주','대형주'],'005930':['수출주','성장주','대형주'],'000660':['수출주','성장주','대형주'],
+  '066570':['수출주','가치주','대형주'],'373220':['수출주','성장주','대형주'],'247540':['수출주','성장주','대형주'],
+  '403870':['수출주','성장주','소형주'],'058470':['수출주','성장주','소형주'],'140860':['수출주','성장주','소형주'],
+  '000270':['수출주','가치주','대형주'],'005380':['수출주','가치주','대형주'],'005490':['수출주','가치주','대형주'],
+  '009540':['수출주','가치주','대형주'],'329180':['수출주','성장주','대형주'],'042660':['수출주','성장주','대형주'],
+  '010140':['수출주','성장주','대형주'],'012450':['수출주','성장주','대형주'],'267260':['수출주','성장주','대형주'],
+  '298040':['수출주','성장주','대형주'],'105560':['내수주','가치주','대형주'],'033780':['내수주','가치주','대형주'],
+  '097950':['내수주','가치주','대형주'],'000080':['내수주','가치주','소형주'],'196170':['내수주','성장주','대형주'],
+  '263750':['내수주','성장주','소형주'],
+  // 국내 ETF
+  '0101N0':['수출주','성장주'],'494670':['수출주','성장주','대형주'],'471990':['수출주','성장주','소형주'],
+  '461950':['수출주','성장주'],'091160':['수출주','성장주','대형주'],'396500':['수출주','성장주','대형주'],
+  '091180':['수출주','가치주','대형주'],'091170':['내수주','가치주','대형주'],'161510':['내수주','가치주','대형주'],
+  '157490':['내수주','성장주','대형주'],'143860':['내수주','성장주'],'266420':['내수주','성장주'],
+  '266410':['내수주','가치주'],'229200':['성장주','소형주'],
+  // 해외
+  'JOBY':['성장주','소형주'],'CAH':['가치주','대형주'],'COR':['가치주','대형주'],'MCK':['가치주','대형주'],
+  'JEPQ':['성장주','대형주'],'QQQ':['성장주','대형주'],'QQQM':['성장주','대형주'],'VUG':['성장주','대형주'],
+  'VTV':['가치주','대형주'],'SCHD':['가치주','대형주'],'NVDA':['성장주','대형주'],'MSFT':['성장주','대형주'],
+  'AMZN':['성장주','대형주'],'AAPL':['성장주','대형주'],'JPM':['가치주','대형주'],'XOM':['가치주','대형주'],
+};
+
 
 function autoTagByName(name,isUs){
   const n=(name||'').toLowerCase();
   if(['인버스','곱버스','inverse','short'].some(k=>n.includes(k)))return['헤지'];
   if(isIndexFund(name,name))return['지수','대형주'];
-  const tags=[];
-  if(['반도체','전자','디스플레이','자동차','조선','화학','배터리','이차전지','ai전','smr','원자력','전력인프라','방산','chip','semiconductor'].some(k=>n.includes(k)))tags.push('수출주');
-  if(['은행','금융','통신','유통','소매','음식','식품','건설','부동산','헬스케어','엔터','미디어','k엔터'].some(k=>n.includes(k)))tags.push('내수주');
+  const has=ks=>ks.some(k=>n.includes(k)),tags=[];
+  // 수출/내수(업종) — 국내만, v7.5 4칸 기준
+  const EXP=['반도체','2차전지','이차전지','배터리','전력','smr','원자력','방산','우주','로봇','디스플레이','자동차','조선','철강','화학','정유','기계','해운','가전','전자','중공업','chip','semiconductor'];
+  const DOM=['은행','금융','보험','증권','통신','유틸','가스','식품','음식','필수','소비재','유통','건설','지주','리츠','바이오','헬스','제약','엔터','미디어','게임','인터넷','플랫폼','소프트웨어','콘텐츠','biotech'];
+  if(!isUs){if(has(EXP))tags.push('수출주');else if(has(DOM))tags.push('내수주');}
   if(['삼성','현대','포스코','s&p','sp500','kospi','top10','대형','voo','spy'].some(k=>n.includes(k)))tags.push('대형주');
-  if(['소형','중소','스몰','small'].some(k=>n.includes(k)))tags.push('소형주');
-  if(['바이오','헬스','biotech','joby','lunar','arkk','성장','신성장'].some(k=>n.includes(k)))tags.push('성장주');
-  if(['배당','dividend','income','채권','bond','treasury','bnd','shy','tlt','국고채','우량회사채'].some(k=>n.includes(k)))tags.push('가치주');
-  // 성장/가치 둘 다 없으면 기본값 적용 (해외=성장주 가정, 국내도 동일)
-  if(!tags.some(t=>['성장주','가치주'].includes(t)))tags.push('성장주');
-  return tags.length?tags:['성장주'];
+  if(['소형','중소','스몰','small','코스닥'].some(k=>n.includes(k)))tags.push('소형주');
+  // 가치/성장: 업종 키워드로 추정 (정확한 기준은 배당 3%↑ 또는 흑자·PBR 1.2배↓ — 종목 수정에서 바꿀 수 있음)
+  tags.push(has(['배당','dividend','income','value','가치','채권','bond','treasury','bnd','shy','tlt','국고채','우량회사채','은행','금융','보험','통신','유틸','가스','식품','자동차','철강','화학','지주','리츠'])?'가치주':'성장주');
+  return tags;
 }
 
 const VALID6=new Set(['수출주','내수주','성장주','가치주','대형주','소형주','헤지','지수']);
@@ -614,7 +642,7 @@ function updateToV41(p){
   if(sk)sk.cur=350000;
   // 신규: HLB생명과학
   if(!p.holdings.kr_stocks.find(h=>h.id==='s7')){
-    p.holdings.kr_stocks.push({id:'s7',name:'HLB생명과학',code:'067630',qty:5.933531,avg:1685,cur:1680,tags:['성장주','소형주']});
+    p.holdings.kr_stocks.push({id:'s7',name:'HLB생명과학',code:'067630',qty:5.933531,avg:1685,cur:1680,tags:['내수주','성장주','소형주']});
   }
   p.lastUpdated='2026-07-13';
   return p;
@@ -668,10 +696,20 @@ function migratePortfolio(p){
     p.holdings.watchlist=JSON.parse(JSON.stringify(INIT.holdings.watchlist));
   }
   const lists=[p.holdings.kr_stocks,p.holdings.kr_etfs,p.holdings.us,p.holdings.bonds,p.holdings.watchlist||[]];
+  const tag4Once=!p.tag4;   // v7.5: 전체 종목 4칸(수출/내수 × 가치/성장) 재분류 1회
   lists.forEach(list=>list.forEach(h=>{
+    const key=h.code||h.ticker,isUs=!!(h.ticker&&!h.code);
+    if(tag4Once&&key&&CLASS4[key]&&!(h.tags||[]).includes('헤지')){h.tags=CLASS4[key].slice();}
     // 알려진 ID → 항상 정확한 태그로 강제 덮어씀 (구버전 태그 제거)
-    if(TAG_MAP[h.id]){
-      h.tags=TAG_MAP[h.id];
+    else if(TAG_MAP[h.id]){
+      h.tags=TAG_MAP[h.id].slice();
+    }
+    // 분류표에 없는 종목: 기존 태그는 지키고 빠진 칸(수출/내수·가치/성장)만 업종 키워드로 보충
+    else if(tag4Once&&h.tags&&h.tags.length&&!h.tags.includes('헤지')&&!h.tags.includes('지수')){
+      const g=autoTagByName(h.name,isUs),t=h.tags.slice();
+      if(!isUs&&!t.some(x=>x==='수출주'||x==='내수주')){const e=g.find(x=>x==='수출주'||x==='내수주');if(e)t.push(e);}
+      if(!t.some(x=>x==='가치주'||x==='성장주')){const v=g.find(x=>x==='가치주'||x==='성장주');if(v)t.push(v);}
+      h.tags=t;
     }
     // 태그 없거나 6분류 아닌 값만 있으면 자동 분류
     else if(!h.tags||!h.tags.length||!h.tags.some(t=>VALID6.has(t))){
@@ -682,6 +720,7 @@ function migratePortfolio(p){
       h.tags=['지수','대형주'];
     }
   }));
+  p.tag4=1;
   // 버전 숫자 비교 (문자열 '4.10'<'4.9' 버그 방지)
   const vn=parseFloat(p.ver||'0');
   if(vn<3.2)updateToV32(p);
@@ -1984,7 +2023,7 @@ function styleBuckets(){
 // 국내 2×2 칸 목표(수출·내수 목표 × 가치·성장 목표)와 현재(두 축 태그가 모두 있는 종목 기준)
 function kr2x2(rows){
   const e=styleTarget(findStyleAxis('kr.exp'))[sigState('retail')]/100,v=styleTarget(findStyleAxis('kr.val'))[sigState('rate')]/100;
-  const C=[['수출주','가치주','자동차·조선·철강·화학'],['수출주','성장주','반도체·IT·2차전지'],['내수주','가치주','은행·보험·통신·필수소비'],['내수주','성장주','헬스케어·바이오·플랫폼']];
+  const C=[['수출주','가치주','자동차·가전·철강·화학'],['수출주','성장주','반도체·조선·전력기기·2차전지'],['내수주','가치주','은행·보험·통신·필수소비'],['내수주','성장주','헬스케어·바이오·게임·플랫폼']];
   const tg=[e*v,e*(1-v),(1-e)*v,(1-e)*(1-v)];
   const cur=C.map(([x,y])=>rows.filter(r=>{const t=r.h.tags||[];return!t.includes('헤지')&&t.includes(x)&&t.includes(y);}).reduce((s,r)=>s+r.ev,0));
   const tot=cur.reduce((a,b)=>a+b,0);
@@ -3371,7 +3410,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.4.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.5.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
