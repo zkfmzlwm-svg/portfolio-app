@@ -317,23 +317,32 @@ run("showTradeModal('kr','s4','buy')");pass++;
 run("showTradeModal('crypto','c1','sell')");pass++;
 run("closeModal()");
 run("showBackup()");pass++;
-// v7.2: 스타일 목표 프리셋 — 기본 홍춘욱 원전략(강세 수출·가치·대형↑ / 약세 내수·성장·소형↑), 선택 데이터 검증형(v7.1)
+// v7.3: 홍춘욱 2단계(기본) — 국내 경기민감:방어·성장 70/35, 해외 가치:성장 60/35(대형 100%) · 선택 데이터 검증형(v7.1)
 {const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
- ok(run('stylePreset()')==='hong','v7.2 기본 프리셋 = 홍춘욱');
- ok(t('kr.size')==='{"bull":90,"neutral":80,"bear":65}','v7.2 hong kr.size 90/80/65');
- ok(t('kr.export')==='{"bull":75,"neutral":65,"bear":50}','v7.2 hong kr.export 75/65/50');
- ok(t('kr.value')==='{"bull":65,"neutral":50,"bear":35}','v7.2 hong kr.value 65/50/35');
- ok(t('us.value')==='{"bull":65,"neutral":50,"bear":35}','v7.2 hong us.value 65/50/35');
- ok(t('us.size')==='{"bull":95,"neutral":90,"bear":75}','v7.2 hong us.size 95/90/75');
+ ok(run('stylePreset()')==='hong','v7.3 기본 프리셋 = 홍춘욱 2단계');
+ ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.cyc"]','v7.3 국내 축 1개');
+ ok(JSON.stringify(run("STYLE_TARGETS.us.map(a=>a.id)"))==='["us.vg"]','v7.3 해외 축 1개(소형 축 없음)');
+ ok(t('kr.cyc')==='{"bull":70,"neutral":35,"bear":35}','v7.3 kr.cyc 70/35/35');
+ ok(t('us.vg')==='{"bull":60,"neutral":35,"bear":35}','v7.3 us.vg 60/35/35');
+ // 점수 축: 삼성전자[수출,대형]=경기민감 100%, 에스티팜[성장,소형]=0%, KB[내수,가치,대형]=2/3
+ const sc=run(`styleAxis([{h:{tags:['수출주','대형주']},ev:100},{h:{tags:['성장주','소형주']},ev:100},{h:{tags:['내수주','가치주','대형주']},ev:300},{h:{tags:['헤지']},ev:999},{h:{tags:[]},ev:50}],'경기민감','방어·성장',true)`);
+ ok(Math.abs(sc.A-300)<1e-9&&Math.abs(sc.B-200)<1e-9&&Math.abs(sc.pa-60)<1e-9,'v7.3 경기민감 점수 집계 '+JSON.stringify(sc));
  let out=run("switchingScreen()");
- ok(out.includes('hong.py')&&out.includes('수출주·가치주·대형주 ▲')&&out.includes('홍춘욱 원전략 (기본)'),'v7.2 스위칭 탭 홍춘욱 표기');
+ ok(out.includes('경기민감 : 방어·성장')&&out.includes('홍춘욱 2단계 (기본)')&&out.includes('해외는 대형주 100%'),'v7.3 스위칭 탭 표기');
+ ok(out.includes('대형 100% 원칙')||out.includes('대형주 100% (소형주 없음)'),'v7.3 해외 소형 안내');
+ ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.3 렌더 깨짐 없음');
  run("setStylePreset('data')");
- ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":75}','v7.2 data kr.size 80/80/75');
- ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.2 data us.value 50/50/40');
- ok(t('us.size')==='{"bull":90,"neutral":90,"bear":95}','v7.2 data us.size 90/90/95');
+ ok(JSON.stringify(run("STYLE_TARGETS.kr.map(a=>a.id)"))==='["kr.size","kr.export"]','v7.3 data 국내 축');
+ ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":75}','v7.3 data kr.size 80/80/75');
+ ok(t('us.value')==='{"bull":50,"neutral":50,"bear":40}','v7.3 data us.value 50/50/40');
+ ok(t('us.size')==='{"bull":90,"neutral":90,"bear":95}','v7.3 data us.size 90/90/95');
  out=run("switchingScreen()");
- ok(out.includes('robust.py'),'v7.2 data 프리셋 근거 표기');
- run("setStylePreset('bogus')");ok(run('stylePreset()')==='data','v7.2 잘못된 프리셋 무시');
- run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.2 홍춘욱 복귀');}
+ ok(out.includes('robust.py')&&!out.includes('undefined'),'v7.3 data 프리셋 근거 표기');
+ run("setStylePreset('bogus')");ok(run('stylePreset()')==='data','v7.3 잘못된 프리셋 무시');
+ run("setStylePreset('hong')");ok(run('stylePreset()')==='hong','v7.3 홍춘욱 복귀');
+ // 2단계 축 수동 저장: neutral = bear 로 맞춰짐
+ run("portfolio.styleTargets={'kr.cyc':{bull:75,neutral:40,bear:40}}");
+ ok(t('kr.cyc')==='{"bull":75,"neutral":40,"bear":40}','v7.3 수동 값 반영');
+ run("resetAllStyleTargets()");ok(t('kr.cyc')==='{"bull":70,"neutral":35,"bear":35}','v7.3 권장값 복원');}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
