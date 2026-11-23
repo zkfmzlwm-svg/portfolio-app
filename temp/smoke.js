@@ -320,7 +320,7 @@ run("showBackup()");pass++;
 // v7.2: 스타일 목표 프리셋 — 기본 홍춘욱 원전략(강세 수출·가치·대형↑ / 약세 내수·성장·소형↑), 선택 데이터 검증형(v7.1)
 {const t=id=>JSON.stringify(run(`styleTarget(findStyleAxis('${id}'))`));
  ok(run('stylePreset()')==='hong','v7.2 기본 프리셋 = 홍춘욱');
- ok(t('kr.size')==='{"bull":90,"neutral":80,"bear":65}','v7.2 hong kr.size 90/80/65');
+ ok(t('kr.size')==='{"bull":80,"neutral":80,"bear":80}','v7.3 hong kr.size 80 고정');
  ok(t('kr.export')==='{"bull":75,"neutral":65,"bear":50}','v7.2 hong kr.export 75/65/50');
  ok(t('kr.value')==='{"bull":65,"neutral":50,"bear":35}','v7.2 hong kr.value 65/50/35');
  ok(t('us.value')==='{"bull":65,"neutral":50,"bear":35}','v7.2 hong us.value 65/50/35');
