@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v7.7.0</title>
+<title>포트폴리오 v7.7.1</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -1366,7 +1366,7 @@ async function fetchIsmPrices(wantYMs){
     while((m=re.exec(list))){const ym=ymOf(m[3],MONTHS_EN.indexOf(m[2].toLowerCase())+1);if(!rel[ym])rel[ym]=m[1];}
     const yms=Object.keys(rel).sort().reverse();
     // 최신 1개월 + 비어있는 월(최대 4건)만 본문 조회
-    const targets=yms.filter((ym,i)=>i===0||wantYMs.includes(ym)).slice(0,4);
+    const targets=yms.filter((ym,i)=>i===0||wantYMs.includes(ym)).slice(0,6);
     for(const ym of targets){
       try{const v=parseIsmPrices(await nativeGetText('https://www.prnewswire.com'+rel[ym]));if(v!=null)out[ym]=v;}catch(e){}
     }
@@ -1398,13 +1398,16 @@ function mergeSwitchSeries(key,vals){
 }
 let switchAutoBusy=false;
 async function autoFetchSwitching(silent){
-  if(switchAutoBusy)return;
+  if(switchAutoBusy){if(!silent){logs=['📡 지표 수집이 이미 진행 중입니다 — 잠시 후 자동 반영']; render();setTimeout(()=>{logs=[];render();},3000);}return;}
   switchAutoBusy=true;
   const res={retail:null,ism:null,rate:null};
   if(!silent){logs=['📡 스위칭 지표 자동 수집...'];render();}
   try{const v=await fetchRetailYoY();res.retail={n:mergeSwitchSeries('retail',v),last:Object.keys(v).sort().pop()};}catch(e){}
   try{
-    const want=portfolio.switching.ism.filter(d=>d.val===null).map(d=>d.ym);
+    // 빈 값인 달 + 마지막 수집 달 이후 빠진 달(앱을 한동안 안 열었을 때)도 본문 조회 → MA3가 끊기지 않게
+    const ism=portfolio.switching.ism,want=ism.filter(d=>d.val===null).map(d=>d.ym);
+    const lastYm=ism.filter(d=>d.val!==null).map(d=>d.ym).sort().pop(),now=new Date(),curYm=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    if(lastYm)for(let m=addYm(lastYm,1);m<curYm;m=addYm(m,1))if(!want.includes(m))want.push(m);
     const v=await fetchIsmPrices(want);res.ism={n:mergeSwitchSeries('ism',v),last:Object.keys(v).sort().pop()};
   }catch(e){}
   try{const v=await fetchRate10y();res.rate={n:mergeSwitchSeries('rate',v),last:Object.keys(v).sort().pop()};}catch(e){}
@@ -3363,7 +3366,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.7.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.7.1</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
