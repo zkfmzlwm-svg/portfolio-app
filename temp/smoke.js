@@ -371,5 +371,16 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  ok(JSON.stringify(run("autoTagByName('KODEX 은행',false)"))==='["내수주","가치주"]','v7.5 키워드 은행 → 내수·가치');
  ok(JSON.stringify(run("autoTagByName('TIGER 반도체TOP10',false)"))==='["수출주","대형주","성장주"]','v7.5 키워드 반도체 → 수출·성장');
  ok(!JSON.stringify(run("autoTagByName('Some Growth Fund',true)")).includes('수출'),'v7.5 해외는 수출/내수 없음');}
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail?1:0);
+// v7.7.1: 앱을 한동안 안 열어 ISM 달이 비면 빠진 달도 조회 (MA3 끊김 방지)
+(async()=>{
+  run("portfolio.switching.ism=portfolio.switching.ism.filter(d=>d.ym<='2026-07')");
+  run("fetchRetailYoY=async()=>{throw new Error('x')};fetchRate10y=async()=>{throw new Error('x')};fetchIsmPrices=async w=>{globalThis._want=w;return{'2026-08':71.1,'2026-09':77.9,'2026-10':75.2}}");
+  run("switchAutoBusy=false");await run("autoFetchSwitching(true)");
+  const w=run("JSON.stringify(_want)");
+  ok(w.includes('2026-08')&&w.includes('2026-09')&&w.includes('2026-10'),'v7.7.1 빠진 ISM 달 조회 '+w);
+  ok(run("portfolio.switching.ism.slice(-3).map(d=>d.ym).join()")==='2026-08,2026-09,2026-10'&&run('ismState().s')==='up','v7.7.1 ISM 연속 시계열 복구');
+  run("switchAutoBusy=true");await run("autoFetchSwitching(false)");ok(run("logs.join()").includes('이미 진행 중'),'v7.7.1 수집 중 버튼 안내');run("switchAutoBusy=false");
+  console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);
+})();
+
+
