@@ -369,7 +369,7 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  ok(tg('s4')==='["수출주","성장주","대형주"]','v7.5 삼성전자 수출·성장 '+tg('s4'));
  ok(tg('s3')==='["수출주","성장주","대형주"]','v7.5 LS ELECTRIC 수출·성장');
  ok(tg('s6')==='["수출주","가치주","대형주"]','v7.5 LG전자 수출·가치');
- ok(tg('s1')==='["내수주","성장주","소형주"]','v7.5 에스티팜 내수·성장');
+ ok(tg('s1')==='["수출주","성장주","소형주"]','v7.9 에스티팜 수출·성장(해외 매출 90%↑)');
  ok(tg('e3')==='["수출주","성장주","대형주"]','v7.5 조선TOP10 수출·성장');
  ok(tg('x1')==='["수출주","가치주","대형주"]','v7.5 직접 추가 기아 → CLASS4');
  ok(tg('x2')==='["대형주","내수주","가치주"]','v7.5 미등록 가스공사 → 빠진 칸 보충 '+tg('x2'));
@@ -397,6 +397,24 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  out=run('styleTiltCard()');ok(out.includes('추가 300만')&&out.includes('매도 불필요'),'v7.8 추가 현금으로 매도 불필요');
  run("portfolio.switchCash={us:{amt:3000000,ym:'2000-01'}}");ok(run('extraCash("us")')===0,'v7.8 지난달 추가 현금은 무효');
  run("portfolio.switchCash={}");}
+// v7.9 해외 가치/성장 = 러셀 가치/성장 기준, 표에 없으면 미지정
+{ok(JSON.stringify(run("autoTagByName('Johnson & Johnson',true,'JNJ')"))==='["가치주","대형주"]','v7.9 JNJ 가치');
+ ok(JSON.stringify(run("autoTagByName('JNJ',true,'JNJ')"))==='["가치주","대형주"]','v7.9 JNJ(이름=티커) 가치');
+ ok(JSON.stringify(run("autoTagByName('NVIDIA',true,'NVDA')"))==='["성장주","대형주"]','v7.9 NVDA 성장');
+ ok(!run("autoTagByName('Some Corp',true,'ZZZZ')").some(t=>t==='가치주'||t==='성장주'),'v7.9 모르는 해외 종목은 미지정');
+ ok(JSON.stringify(run("autoTagByName('SPY',true,'SPY')"))==='["지수","대형주"]','v7.9 지수 ETF 유지');
+ // 1회 재분류: 기존에 성장으로 잘못 저장된 JNJ → 가치, 헤지·국내 기타는 유지
+ const old=JSON.parse(run("JSON.stringify(INIT)"));old.tag4=1;delete old.tag5;
+ old.holdings.us.push({id:'mj',name:'JNJ',ticker:'JNJ',qty:1,avg:1,cur:1,tags:['성장주','대형주'],usd:true});
+ old.holdings.kr_stocks.find(h=>h.id==='s1').tags=['내수주','성장주','소형주'];old.holdings.kr_stocks[0].id='zz';
+ const m=run(`(()=>{const p=${JSON.stringify(old)};migratePortfolio(p);return p;})()`);
+ ok(JSON.stringify(m.holdings.us.find(h=>h.id==='mj').tags)==='["가치주","대형주"]'&&m.tag5===1,'v7.9 저장된 JNJ 성장 → 가치');
+ ok(JSON.stringify(m.holdings.kr_stocks.find(h=>h.code==='237690').tags)==='["수출주","성장주","소형주"]','v7.9 저장된 에스티팜 → 수출');
+ ok(JSON.stringify(m.holdings.us.find(h=>h.ticker==='UPRO').tags)==='["지수","대형주"]','v7.9 UPRO 지수 유지');
+ // 미분류 경고
+ run("portfolio.holdings.us.push({id:'zx',name:'Unknown',ticker:'ZZZZ',qty:10,avg:10,cur:10,tags:['대형주'],usd:true})");
+ ok(run('styleTiltCard()').includes('분류 필요 1종목'),'v7.9 미분류 경고');
+ run("portfolio.holdings.us=portfolio.holdings.us.filter(h=>h.id!=='zx')");}
 // v7.7.1: 앱을 한동안 안 열어 ISM 달이 비면 빠진 달도 조회 (MA3 끊김 방지)
 (async()=>{
   run("portfolio.switching.ism=portfolio.switching.ism.filter(d=>d.ym<='2026-07')");
