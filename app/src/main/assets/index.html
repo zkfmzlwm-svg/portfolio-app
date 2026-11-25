@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v7.7.1</title>
+<title>포트폴리오 v7.8.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -1453,6 +1453,14 @@ function stSeries(v,upF,dnF,from){   // 상태기계: up/down 조건이 아니�
   for(let i=from;i<v.length;i++){st=upF(i)?'up':dnF(i)?'down':st;out.push({ym:v[i].ym,s:st});}
   return out;
 }
+// v7.8 신호 확인(#2): 새 상태가 2개월 연속 유지돼야 실행 목표로 확정. 그 전엔 '확인 대기', 목표는 직전 확정 상태 유지(휩쏘 방지)
+const SIG_CONFIRM=2;
+function confirmSeries(ser,need){   // ser=[{ym,s}] (월 순서) → {c 확정 상태, cSince 확정 월, raw 최신 상태, held 최신 상태 연속 개월, pending}
+  need=need||SIG_CONFIRM;let c='none',cSince=null,run=0;
+  ser.forEach((x,i)=>{run=i>0&&ser[i-1].s===x.s?run+1:1;if(x.s!=='none'&&x.s!==c&&run>=need){c=x.s;cSince=x.ym;}});
+  const raw=ser.length?ser[ser.length-1].s:'none';
+  return{c,cSince,raw,held:run,pending:raw!=='none'&&raw!==c};
+}
 function lastState(ser){let since=null;for(let i=ser.length-1;i>=0&&ser[i].s===(ser[ser.length-1]||{}).s;i--)since=ser[i].ym;
   const s=ser.length?ser[ser.length-1].s:'none';return{s,since:s==='none'?null:since};}
 function retailSeries(){
@@ -1471,25 +1479,27 @@ function econState(){
   const rs=retailSeries(),is=ismSeries(),ev={};
   rs.forEach(x=>{(ev[addYm(x.ym,2)]=ev[addYm(x.ym,2)]||{}).r=x.s;});
   is.forEach(x=>{(ev[addYm(x.ym,1)]=ev[addYm(x.ym,1)]||{}).i=x.s;});
-  let r='none',q='none',st='none',since=null;
+  let r='none',q='none',st='none',since=null;const ser=[];
   Object.keys(ev).sort().forEach(m=>{if(ev[m].r)r=ev[m].r;if(ev[m].i)q=ev[m].i;
-    const ns=r==='up'&&q==='up'?'up':r==='down'&&q==='down'?'down':st;if(ns!==st){st=ns;since=m;}});
-  return{s:st,since,r:retailState(),i:ismState()};
+    const ns=r==='up'&&q==='up'?'up':r==='down'&&q==='down'?'down':st;if(ns!==st){st=ns;since=m;}ser.push({ym:m,s:st});});
+  return{s:st,since,cf:confirmSeries(ser),r:retailState(),i:ismState()};
 }
 function rateState(){
   const v=portfolio.switching.rate.filter(d=>d.val!==null);
   const ser=stSeries(v,i=>v[i].val>v[i-3].val,i=>v[i].val<v[i-3].val,3);
   const chg=v.length>3?Math.round((v[v.length-1].val-v[v.length-4].val)*100)/100:null;
-  return Object.assign(lastState(ser),{chg,last:v.length?v[v.length-1]:null,n:v.length});
+  return Object.assign(lastState(ser),{cf:confirmSeries(ser),chg,last:v.length?v[v.length-1]:null,n:v.length});
 }
 const SIG_TXT={econ:{up:'수출주',down:'내수주',none:'신호 없음'},retail:{up:'↑',down:'↓',none:'추세 없음'},ism:{up:'↑',down:'↓',none:'추세 없음'},rate:{up:'가치주',down:'성장주',none:'신호 없음'}};
-function sigState(k){return k==='econ'?econState().s:k==='retail'?retailState().s:k==='ism'?ismState().s:rateState().s;}
+function sigState(k){return k==='econ'?econState().cf.c:k==='retail'?retailState().s:k==='ism'?ismState().s:rateState().cf.c;}   // 경기·금리는 확정 상태
+const pendTxt=(k,st)=>st.cf.pending?`⏳ ${SIG_TXT[k][st.cf.raw]} 확인 대기 ${st.cf.held}/${SIG_CONFIRM}개월`:'';
 const arw=s=>s==='up'?'↑':s==='down'?'↓':'→';
 function dualSignal(){
-  const e=econState(),q=rateState(),te=styleTarget(findStyleAxis('kr.exp'))[e.s],tv=styleTarget(findStyleAxis('us.val'))[q.s];
+  const e=econState(),q=rateState(),ec=e.cf.c,qc=q.cf.c,te=styleTarget(findStyleAxis('kr.exp'))[ec],tv=styleTarget(findStyleAxis('us.val'))[qc];
   const lab=(k,st)=>st==='none'?'⏸ '+SIG_TXT[k].none:(st==='up'?'🟢 ':'🔵 ')+SIG_TXT[k][st];
-  return{s:'dual',label:`${lab('econ',e.s)} · ${lab('rate',q.s)}`,
-    sub:`경기 ${arw(e.s)} (소매판매 ${arw(e.r.s)} · ISM ${arw(e.i.s)}) · 금리 ${arw(q.s)} → 국내 수출 ${te} : 내수 ${100-te} · 해외 가치 ${tv} : 성장 ${100-tv} (대형 100%)`,
+  const pend=[pendTxt('econ',e),pendTxt('rate',q)].filter(Boolean);
+  return{s:'dual',label:`${lab('econ',ec)} · ${lab('rate',qc)}`,
+    sub:`경기 ${arw(ec)} (소매판매 ${arw(e.r.s)} · ISM ${arw(e.i.s)}) · 금리 ${arw(qc)} → 국내 수출 ${te} : 내수 ${100-te} · 해외 가치 ${tv} : 성장 ${100-tv} (대형 100%)${pend.length?' · '+pend.join(' · ')+' (확정 전까지 위 목표 유지)':''}`,
     color:T.teal,e,q};
 }
 function overallSignal(){return dualSignal();}
@@ -2000,6 +2010,51 @@ function usSmallNote(rows){
   if(!sm||!tot)return `<div style="font-size:10px;color:${T.green};margin-bottom:4px">✓ 대형주 100% (소형주 없음)</div>`;
   return `<div style="font-size:10px;color:${T.amber};margin-bottom:4px">소형주 ${(sm/tot*100).toFixed(0)}% (≈${won(sm,true)}) — 대형 100% 원칙: 신규 매수는 대형으로</div>`;
 }
+// v7.8 현금흐름 우선(#3): 스타일 차이는 신규 현금(이번 달 적립 배정 + 배당·추가 현금)으로 먼저 채우고, 남는 부분만 매도 전환
+//  U: 부족한 쪽 금액, d: 버킷(두 쪽 합), p: 부족한 쪽 목표 비율(0~1)
+//  현금만으로 맞추는 데 필요한 금액 x: (U+x)/(d+x)=p → x=(p·d−U)/(1−p)
+//  이번 달 현금 c=min(C,x) 투입 후 남는 차이를 교체매매(매도 S → 매수 S, 버킷 총액 불변)로: S=p·(d+c)−(U+c)
+const ymNow=()=>localYmd(new Date()).slice(0,7);
+function extraCash(key){const x=(portfolio.switchCash||{})[key];return x&&x.ym===ymNow()&&x.amt>0?x.amt:0;}   // 이번 달에만 유효
+function bucketCash(key){
+  const a=(newMoneyPlan(monthly*10000).allocs||[]).find(x=>x.k===key);
+  const plan=a?a.amt:0,ex=extraCash(key);return{plan,ex,C:plan+ex};
+}
+function cashFirstPlan(U,d,p,C){
+  if(!(d>0)||p<=0)return null;
+  const x=p>=1?Infinity:Math.max(0,(p*d-U)/(1-p));
+  const c=Math.min(C,x),S=Math.max(0,p*(d+c)-(U+c));
+  return{x,c,S,months:x===Infinity?Infinity:C>0?Math.ceil(x/C):Infinity};
+}
+function showExtraCashModal(key){
+  const cur=extraCash(key);
+  showModal(`<div class="sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:${T.text};margin-bottom:4px">💰 ${key==='kr'?'국내':'해외'}주식 추가 현금 (이번 달)</div>
+    <div style="font-size:12px;color:${T.text3};margin-bottom:14px">배당·매도대금 등 이번 달 이 버킷에 새로 쓸 수 있는 현금(원). 월 적립 배정액에 더해 스타일 부족분을 먼저 채웁니다. 다음 달이 되면 자동으로 0이 됩니다.</div>
+    <input type="number" id="xcash" value="${cur||''}" min="0" step="10000" placeholder="0" style="font-size:16px;text-align:right;font-family:monospace;margin-bottom:16px">
+    <div style="display:flex;gap:8px">
+      <button onclick="saveExtraCash('${key}')" class="tap" style="flex:1;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">저장</button>
+      <button onclick="closeModal()" class="tap" style="padding:13px 16px;background:${T.bg3};color:${T.text2};border-radius:12px;font-size:13px">취소</button>
+    </div>`);
+}
+function saveExtraCash(key){
+  const raw=document.getElementById('xcash')?.value,n=raw===''?0:parseFloat(raw);
+  if(isNaN(n)||n<0){alert('0 이상 숫자를 입력하세요.');return;}
+  if(!portfolio.switchCash)portfolio.switchCash={};
+  if(n>0)portfolio.switchCash[key]={amt:Math.round(n),ym:ymNow()};else delete portfolio.switchCash[key];
+  save();closeModal();render();
+}
+function cashFirstHtml(key,ax,r,tg,gap){
+  const under=gap>0?ax.a:ax.b,over=gap>0?ax.b:ax.a,U=gap>0?r.A:r.B,p=(gap>0?tg:100-tg)/100;
+  const bc=bucketCash(key),f=cashFirstPlan(U,r.d,p,bc.C);if(!f)return'';
+  const src=`이번 달 현금 ${won(bc.C,true)}${bc.ex?` (적립 ${won(bc.plan,true)} + 추가 ${won(bc.ex,true)})`:' (월 적립 배정)'}`;
+  const sell=f.S>=10000;   // 1만원 미만 잔차는 무시
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed ${T.border};font-size:11px;line-height:1.6">
+    <div style="color:${T.text2}">💰 <b>① 현금 먼저</b>: ${bc.C>0?`${src} → <b style="color:${T.green}">${under} ${won(f.c,true)} 매수</b>`:`이번 달 이 버킷 배정 현금 없음 (자산군이 목표 이상이면 적립이 다른 자산군으로 감)`}</div>
+    <div style="color:${T.text3}">현금만으로 맞추려면 ${won(f.x,true)} 필요${f.months===Infinity?'':f.months<=1?' · 이번 달에 해결':` · 지금 속도로 약 ${f.months}개월`}</div>
+    <div style="color:${sell?T.amber:T.green};font-weight:700">${sell?`② 그래도 남는 차이: ${over} ${won(f.S,true)} 매도 → ${under} 매수`:'② 매도 불필요'}</div>
+  </div>`;
+}
 function styleTiltCard(){
   const B=styleBuckets(),kLabel=dualSignal().label;
   const bucket=(key,title)=>{
@@ -2027,7 +2082,9 @@ function styleTiltCard(){
             <span style="color:${T.text3}">${man?'수동 설정 · 권장 '+ax.t[kk]+' : '+(100-ax.t[kk]):ax.why}</span>
             <span style="color:${col};font-weight:700;white-space:nowrap">${ok?'✓ 적정 범위':`${side} ▲ ${Math.abs(gap).toFixed(0)}%p (≈${won(amt,true)})`}</span>
           </div>
+          ${ok?'':cashFirstHtml(key,ax,r,tg,gap)}
         </div>`;}).join('')}
+      <div onclick="showExtraCashModal('${key}')" class="tap" style="font-size:10px;color:${T.teal};margin-bottom:4px">＋ 배당·추가 현금 (이번 달) ${extraCash(key)?won(extraCash(key),true)+' ✎':'입력'}</div>
       ${key==='us'?usSmallNote(rows):''}
       ${hedge>0?`<div style="font-size:10px;color:${T.text3}">🛡 헤지(인버스) ${(hedge/total*100).toFixed(1)}% — 스타일 계산 제외</div>`:''}
       ${kept.length?`<div style="font-size:10px;color:${T.amber}">🔒 장기보유 ${kept.length}종목 ${won(kept.reduce((s,e)=>s+entryValue(e),0),true)} — 스타일 계산 제외</div>`:''}
@@ -2038,7 +2095,7 @@ function styleTiltCard(){
       <div style="font-size:13px;font-weight:700;color:${T.text}">🧭 주식 내부 스타일 목표</div>
       <span style="font-size:11px;color:${T.text2}">현재 국면 ${kLabel}</span>
     </div>
-    <div style="font-size:11px;color:${T.text3};margin-top:6px;line-height:1.5">국내·해외 주식 버킷 안의 비중입니다. 차이 5%p 이상이면 <b>매월 적립금을 ▲ 쪽에 먼저 배분</b>해 맞추세요(매도 최소화).</div>
+    <div style="font-size:11px;color:${T.text3};margin-top:6px;line-height:1.5">국내·해외 주식 버킷 안의 비중입니다. 차이 5%p 이상이면 <b>① 이번 달 적립 배정·배당 현금으로 ▲ 쪽을 먼저 사고</b>, ② 그래도 남는 차이만 매도로 맞춥니다. 경기·금리 신호는 <b>2개월 연속 유지돼야 확정</b>되고, 그 전엔 직전 목표를 유지합니다.</div>
     ${bucket('kr','🇰🇷 국내주식')}
     ${bucket('us','🌏 해외주식')}
     ${keptSummary().n?`<button onclick="showKeepModal()" class="tap" style="width:100%;margin-top:6px;padding:9px;background:${T.bg2};color:${T.amber};border-radius:10px;font-size:12px">🔒 장기보유(제외) 종목 관리</button>`:''}
@@ -3366,7 +3423,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.7.1</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.8.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -4305,6 +4362,11 @@ function _doReset(){
 }
 
 function sigStyle(s){return s==='bull'?{c:T.green,t:'🟢 충족'}:s==='forming'?{c:T.amber,t:'🔶 형성중'}:s==='bear'?{c:T.red,t:'🔴 미충족'}:{c:T.text3,t:'⏳ 데이터 부족'};}
+// 확정/대기 표시: 대기면 '⏳ 성장주 확인 대기 1/2개월', 확정이면 확정 월
+function cfLine(cf,k){
+  if(cf.pending)return `<div style="color:${T.amber};font-size:11px;font-weight:700;margin-top:3px">⏳ ${SIG_TXT[k][cf.raw]} 확인 대기 ${cf.held}/${SIG_CONFIRM}개월</div>`;
+  return cf.cSince?`<div style="color:${T.text3};font-size:10px;font-weight:400;margin-top:2px">✓ ${cf.cSince} 확정</div>`:'';
+}
 function renderSignalBox(sig){
   {
     const it=(title,st,txt,extra)=>{const c=st==='up'?T.green:st==='down'?T.blue:T.text3;
@@ -4315,9 +4377,9 @@ function renderSignalBox(sig){
     <div style="font-size:20px;font-weight:800;color:${sig.color};margin-bottom:6px">${sig.label}</div>
     <div style="font-size:12px;color:${T.text2}">${sig.sub}</div>
     <div style="margin-top:14px;display:flex;gap:12px;justify-content:center;font-size:12px">
-      ${it('경기 → 국내 수출/내수',e.s,e.s==='none'?'⏸ 신호 없음':(e.s==='up'?'🟢 ':'🔵 ')+SIG_TXT.econ[e.s],`소매판매 ${arw(e.r.s)}${e.r.last?' '+e.r.last.val+'%':''} · ISM ${arw(e.i.s)}${e.i.last?' '+e.i.last.val:''}`)}
+      ${it('경기 → 국내 수출/내수',e.cf.c,(e.cf.c==='none'?'⏸ 신호 없음':(e.cf.c==='up'?'🟢 ':'🔵 ')+SIG_TXT.econ[e.cf.c])+cfLine(e.cf,'econ'),`소매판매 ${arw(e.r.s)}${e.r.last?' '+e.r.last.val+'%':''} · ISM ${arw(e.i.s)}${e.i.last?' '+e.i.last.val:''}`)}
       <div style="width:1px;background:${T.border}"></div>
-      ${it('금리 → 해외 가치/성장',q.s,q.s==='none'?'⏸ 신호 없음':(q.s==='up'?'🟢 ':'🔵 ')+SIG_TXT.rate[q.s],q.last?`${q.last.ym} ${q.last.val}% (3개월 ${q.chg>0?'+':''}${q.chg??'-'}%p)`:'')}
+      ${it('금리 → 해외 가치/성장',q.cf.c,(q.cf.c==='none'?'⏸ 신호 없음':(q.cf.c==='up'?'🟢 ':'🔵 ')+SIG_TXT.rate[q.cf.c])+cfLine(q.cf,'rate'),q.last?`${q.last.ym} ${q.last.val}% (3개월 ${q.chg>0?'+':''}${q.chg??'-'}%p)`:'')}
     </div>
   </div>`;
   }
