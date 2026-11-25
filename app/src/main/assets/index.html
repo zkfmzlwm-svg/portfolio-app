@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v7.8.0</title>
+<title>포트폴리오 v7.9.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -287,7 +287,7 @@ const INIT={
   targets:{kr:20,us:35,bonds:5,gold:25,crypto:15},
   holdings:{
     kr_stocks:[
-      {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['내수주','성장주','소형주'],eps:1782,indPer:50},
+      {id:'s1',name:'에스티팜',code:'237690',qty:70,avg:100236,cur:110600,tags:['수출주','성장주','소형주'],eps:1782,indPer:50},
       {id:'s2',name:'삼천당제약',code:'000250',qty:13.436057,avg:453713,cur:170400,tags:['내수주','성장주','소형주'],eps:226,indPer:50},
       {id:'s3',name:'LS ELECTRIC',code:'010120',qty:1,avg:302996,cur:214500,tags:['수출주','성장주','대형주'],eps:5000,indPer:20},
       {id:'s4',name:'삼성전자',code:'005930',qty:9.058985,avg:295790,cur:257500,tags:['수출주','성장주','대형주']},
@@ -391,7 +391,7 @@ const INIT={
 //  해외 종목은 수출/내수 없이 가치/성장·대형/소형만. 지수 ETF는 '지수'(가치/성장 50:50).
 const TAG_MAP={
   // 국내 개별주
-  's1':['내수주','성장주','소형주'],          // 에스티팜 (헬스케어 CDMO, PBR 2.3)
+  's1':['수출주','성장주','소형주'],          // 에스티팜 (올리고 CDMO, 해외 매출 90%↑ → v7.9 수출, PBR 2.3)
   's2':['내수주','성장주','소형주'],          // 삼천당제약 (제약, PBR 11)
   's3':['수출주','성장주','대형주'],          // LS ELECTRIC (전력기기, PBR 7.7)
   's4':['수출주','성장주','대형주'],          // 삼성전자 (반도체, PBR 1.9 · 배당 0.9%)
@@ -419,10 +419,50 @@ const TAG_MAP={
   // 채권
   'b1':['가치주'],'b2':['가치주'],'b3':['가치주'],
 };
+// v7.9 해외 가치/성장 = Russell 1000 가치(IWD)/성장(IWF)·S&P500 스타일 지수 주 편입 기준 (백테스트 IWD:IWF·FF B/M과 같은 정의)
+//  미국은 가치주도 PBR 3~6배가 흔해 국내 기준(PBR 1.2·배당 3%)을 쓰면 JNJ 같은 전형적 가치주가 성장으로 잘못 분류됨.
+//  표에 없는 해외 종목은 기본 성장 대신 '분류 필요'로 두고 스위칭 카드에 경고(종목 수정에서 직접 지정).
+const US_STYLE={
+  // 가치: 헬스케어(제약·유통·보험)·금융·에너지·필수소비·통신·전통 IT·산업재·유틸·소재·리츠·배당 ETF
+  'JNJ':['가치주','대형주'],'PFE':['가치주','대형주'],'MRK':['가치주','대형주'],'ABBV':['가치주','대형주'],'BMY':['가치주','대형주'],'AMGN':['가치주','대형주'],'GILD':['가치주','대형주'],'CVS':['가치주','대형주'],
+  'UNH':['가치주','대형주'],'CI':['가치주','대형주'],'ELV':['가치주','대형주'],'HUM':['가치주','대형주'],'CNC':['가치주','대형주'],'MDT':['가치주','대형주'],'ABT':['가치주','대형주'],'DHR':['가치주','대형주'],
+  'TMO':['가치주','대형주'],'BDX':['가치주','대형주'],'CAH':['가치주','대형주'],'COR':['가치주','대형주'],'MCK':['가치주','대형주'],'BAX':['가치주','대형주'],'ZBH':['가치주','대형주'],'BRK.B':['가치주','대형주'],
+  'BRK-B':['가치주','대형주'],'JPM':['가치주','대형주'],'BAC':['가치주','대형주'],'WFC':['가치주','대형주'],'C':['가치주','대형주'],'GS':['가치주','대형주'],'MS':['가치주','대형주'],'SCHW':['가치주','대형주'],
+  'BLK':['가치주','대형주'],'USB':['가치주','대형주'],'PNC':['가치주','대형주'],'TFC':['가치주','대형주'],'COF':['가치주','대형주'],'AXP':['가치주','대형주'],'MET':['가치주','대형주'],'PRU':['가치주','대형주'],
+  'AIG':['가치주','대형주'],'TRV':['가치주','대형주'],'CB':['가치주','대형주'],'ALL':['가치주','대형주'],'PGR':['가치주','대형주'],'BK':['가치주','대형주'],'STT':['가치주','대형주'],'XOM':['가치주','대형주'],
+  'CVX':['가치주','대형주'],'COP':['가치주','대형주'],'OXY':['가치주','대형주'],'SLB':['가치주','대형주'],'PSX':['가치주','대형주'],'MPC':['가치주','대형주'],'VLO':['가치주','대형주'],'EOG':['가치주','대형주'],
+  'KMI':['가치주','대형주'],'WMB':['가치주','대형주'],'OKE':['가치주','대형주'],'KO':['가치주','대형주'],'PEP':['가치주','대형주'],'PG':['가치주','대형주'],'WMT':['가치주','대형주'],'MO':['가치주','대형주'],
+  'PM':['가치주','대형주'],'KHC':['가치주','대형주'],'MDLZ':['가치주','대형주'],'CL':['가치주','대형주'],'KMB':['가치주','대형주'],'GIS':['가치주','대형주'],'KR':['가치주','대형주'],'TGT':['가치주','대형주'],
+  'DG':['가치주','대형주'],'HSY':['가치주','대형주'],'KDP':['가치주','대형주'],'STZ':['가치주','대형주'],'T':['가치주','대형주'],'VZ':['가치주','대형주'],'CMCSA':['가치주','대형주'],'DIS':['가치주','대형주'],
+  'CHTR':['가치주','대형주'],'IBM':['가치주','대형주'],'INTC':['가치주','대형주'],'CSCO':['가치주','대형주'],'TXN':['가치주','대형주'],'QCOM':['가치주','대형주'],'HPQ':['가치주','대형주'],'HPE':['가치주','대형주'],
+  'DELL':['가치주','대형주'],'HD':['가치주','대형주'],'LOW':['가치주','대형주'],'MCD':['가치주','대형주'],'NKE':['가치주','대형주'],'SBUX':['가치주','대형주'],'F':['가치주','대형주'],'GM':['가치주','대형주'],
+  'CAT':['가치주','대형주'],'DE':['가치주','대형주'],'HON':['가치주','대형주'],'MMM':['가치주','대형주'],'RTX':['가치주','대형주'],'LMT':['가치주','대형주'],'NOC':['가치주','대형주'],'GD':['가치주','대형주'],
+  'BA':['가치주','대형주'],'UPS':['가치주','대형주'],'FDX':['가치주','대형주'],'UNP':['가치주','대형주'],'CSX':['가치주','대형주'],'NSC':['가치주','대형주'],'EMR':['가치주','대형주'],'ITW':['가치주','대형주'],
+  'ETN':['가치주','대형주'],'JCI':['가치주','대형주'],'NEE':['가치주','대형주'],'DUK':['가치주','대형주'],'SO':['가치주','대형주'],'D':['가치주','대형주'],'AEP':['가치주','대형주'],'EXC':['가치주','대형주'],
+  'SRE':['가치주','대형주'],'XEL':['가치주','대형주'],'PCG':['가치주','대형주'],'LIN':['가치주','대형주'],'DOW':['가치주','대형주'],'DD':['가치주','대형주'],'NEM':['가치주','대형주'],'FCX':['가치주','대형주'],
+  'APD':['가치주','대형주'],'ECL':['가치주','대형주'],'O':['가치주','대형주'],'SPG':['가치주','대형주'],'PLD':['가치주','대형주'],'AMT':['가치주','대형주'],'CCI':['가치주','대형주'],'PSA':['가치주','대형주'],
+  'VICI':['가치주','대형주'],'WELL':['가치주','대형주'],'SCHD':['가치주','대형주'],'VTV':['가치주','대형주'],'VYM':['가치주','대형주'],'DVY':['가치주','대형주'],'HDV':['가치주','대형주'],'IWD':['가치주','대형주'],
+  'SPYV':['가치주','대형주'],'VOOV':['가치주','대형주'],'IVE':['가치주','대형주'],'DGRO':['가치주','대형주'],'NOBL':['가치주','대형주'],'JEPI':['가치주','대형주'],'XLE':['가치주','대형주'],'XLF':['가치주','대형주'],
+  'XLV':['가치주','대형주'],'XLP':['가치주','대형주'],'XLU':['가치주','대형주'],'XLI':['가치주','대형주'],'XLB':['가치주','대형주'],'VNQ':['가치주','대형주'],'PYPL':['가치주','대형주'],
+  // 성장: 빅테크·플랫폼·반도체 장비·고성장 헬스케어(LLY·ISRG)·결제망·성장 ETF
+  'AAPL':['성장주','대형주'],'MSFT':['성장주','대형주'],'NVDA':['성장주','대형주'],'AMZN':['성장주','대형주'],'GOOGL':['성장주','대형주'],'GOOG':['성장주','대형주'],'META':['성장주','대형주'],'TSLA':['성장주','대형주'],
+  'AVGO':['성장주','대형주'],'NFLX':['성장주','대형주'],'ADBE':['성장주','대형주'],'CRM':['성장주','대형주'],'ORCL':['성장주','대형주'],'AMD':['성장주','대형주'],'NOW':['성장주','대형주'],'INTU':['성장주','대형주'],
+  'UBER':['성장주','대형주'],'PLTR':['성장주','대형주'],'SHOP':['성장주','대형주'],'SNOW':['성장주','대형주'],'PANW':['성장주','대형주'],'CRWD':['성장주','대형주'],'ANET':['성장주','대형주'],'LLY':['성장주','대형주'],
+  'NVO':['성장주','대형주'],'ISRG':['성장주','대형주'],'VRTX':['성장주','대형주'],'REGN':['성장주','대형주'],'DXCM':['성장주','대형주'],'IDXX':['성장주','대형주'],'ZTS':['성장주','대형주'],'COST':['성장주','대형주'],
+  'V':['성장주','대형주'],'MA':['성장주','대형주'],'ABNB':['성장주','대형주'],'BKNG':['성장주','대형주'],'LULU':['성장주','대형주'],'CMG':['성장주','대형주'],'TJX':['성장주','대형주'],'ORLY':['성장주','대형주'],
+  'AZO':['성장주','대형주'],'TSM':['성장주','대형주'],'ASML':['성장주','대형주'],'AMAT':['성장주','대형주'],'LRCX':['성장주','대형주'],'KLAC':['성장주','대형주'],'MRVL':['성장주','대형주'],'SMCI':['성장주','대형주'],
+  'ARM':['성장주','대형주'],'MU':['성장주','대형주'],'ADI':['성장주','대형주'],'NXPI':['성장주','대형주'],'MCHP':['성장주','대형주'],'ON':['성장주','대형주'],'COIN':['성장주','대형주'],'MSTR':['성장주','대형주'],
+  'RBLX':['성장주','대형주'],'XYZ':['성장주','대형주'],'SQ':['성장주','대형주'],'JOBY':['성장주','소형주'],'ACHR':['성장주','소형주'],'RKLB':['성장주','소형주'],'IONQ':['성장주','소형주'],'RGTI':['성장주','소형주'],
+  'SOFI':['성장주','소형주'],'HOOD':['성장주','대형주'],'RIVN':['성장주','대형주'],'LCID':['성장주','소형주'],'DDOG':['성장주','대형주'],'NET':['성장주','대형주'],'ZS':['성장주','대형주'],'MDB':['성장주','대형주'],
+  'TTD':['성장주','대형주'],'APP':['성장주','대형주'],'DASH':['성장주','대형주'],'SPOT':['성장주','대형주'],'SE':['성장주','대형주'],'MELI':['성장주','대형주'],'QQQ':['성장주','대형주'],'QQQM':['성장주','대형주'],
+  'VUG':['성장주','대형주'],'SCHG':['성장주','대형주'],'IWF':['성장주','대형주'],'SPYG':['성장주','대형주'],'VOOG':['성장주','대형주'],'IVW':['성장주','대형주'],'VGT':['성장주','대형주'],'XLK':['성장주','대형주'],
+  'SMH':['성장주','대형주'],'SOXX':['성장주','대형주'],'SOXL':['성장주','대형주'],'TQQQ':['성장주','대형주'],'ARKK':['성장주','대형주'],'JEPQ':['성장주','대형주'],'IGV':['성장주','대형주'],
+  'IONS':['성장주','대형주'],'QDTE':['성장주','대형주'],'ANT':['성장주','대형주'],   // IONS 적자 바이오(러셀 성장) · QDTE 나스닥100 커버드콜(JEPQ와 같음) · ANT 앤트로픽
+};
 // 코드·티커 기준 4칸 분류 — 직접 추가한 종목(ID가 달라도)에도 v7.5 1회 마이그레이션에서 적용
 const CLASS4={
   // 국내 개별주
-  '237690':['내수주','성장주','소형주'],'000250':['내수주','성장주','소형주'],'067630':['내수주','성장주','소형주'],
+  '237690':['수출주','성장주','소형주'],'000250':['내수주','성장주','소형주'],'067630':['내수주','성장주','소형주'],
   '010120':['수출주','성장주','대형주'],'005930':['수출주','성장주','대형주'],'000660':['수출주','성장주','대형주'],
   '066570':['수출주','가치주','대형주'],'373220':['수출주','성장주','대형주'],'247540':['수출주','성장주','대형주'],
   '403870':['수출주','성장주','소형주'],'058470':['수출주','성장주','소형주'],'140860':['수출주','성장주','소형주'],
@@ -430,7 +470,7 @@ const CLASS4={
   '009540':['수출주','가치주','대형주'],'329180':['수출주','성장주','대형주'],'042660':['수출주','성장주','대형주'],
   '010140':['수출주','성장주','대형주'],'012450':['수출주','성장주','대형주'],'267260':['수출주','성장주','대형주'],
   '298040':['수출주','성장주','대형주'],'105560':['내수주','가치주','대형주'],'033780':['내수주','가치주','대형주'],
-  '097950':['내수주','가치주','대형주'],'000080':['내수주','가치주','소형주'],'196170':['내수주','성장주','대형주'],
+  '097950':['내수주','가치주','대형주'],'000080':['내수주','가치주','소형주'],'196170':['수출주','성장주','대형주'],
   '263750':['내수주','성장주','소형주'],
   // 국내 ETF
   '0101N0':['수출주','성장주'],'494670':['수출주','성장주','대형주'],'471990':['수출주','성장주','소형주'],
@@ -439,14 +479,13 @@ const CLASS4={
   '157490':['내수주','성장주','대형주'],'143860':['내수주','성장주'],'266420':['내수주','성장주'],
   '266410':['내수주','가치주'],'229200':['성장주','소형주'],
   // 해외
-  'JOBY':['성장주','소형주'],'CAH':['가치주','대형주'],'COR':['가치주','대형주'],'MCK':['가치주','대형주'],
-  'JEPQ':['성장주','대형주'],'QQQ':['성장주','대형주'],'QQQM':['성장주','대형주'],'VUG':['성장주','대형주'],
-  'VTV':['가치주','대형주'],'SCHD':['가치주','대형주'],'NVDA':['성장주','대형주'],'MSFT':['성장주','대형주'],
-  'AMZN':['성장주','대형주'],'AAPL':['성장주','대형주'],'JPM':['가치주','대형주'],'XOM':['가치주','대형주'],
+  ...US_STYLE,
 };
 
 
-function autoTagByName(name,isUs){
+function autoTagByName(name,isUs,ticker){
+  const tk=String(ticker||'').toUpperCase();
+  if(isUs&&US_STYLE[tk]&&!isIndexFund(name,tk))return US_STYLE[tk].slice();
   const n=(name||'').toLowerCase();
   if(['인버스','곱버스','inverse','short'].some(k=>n.includes(k)))return['헤지'];
   if(isIndexFund(name,name))return['지수','대형주'];
@@ -458,7 +497,13 @@ function autoTagByName(name,isUs){
   if(['삼성','현대','포스코','s&p','sp500','kospi','top10','대형','voo','spy'].some(k=>n.includes(k)))tags.push('대형주');
   if(['소형','중소','스몰','small','코스닥'].some(k=>n.includes(k)))tags.push('소형주');
   // 가치/성장: 업종 키워드로 추정 (정확한 기준은 배당 3%↑ 또는 흑자·PBR 1.2배↓ — 종목 수정에서 바꿀 수 있음)
-  tags.push(has(['배당','dividend','income','value','가치','채권','bond','treasury','bnd','shy','tlt','국고채','우량회사채','은행','금융','보험','통신','유틸','가스','식품','자동차','철강','화학','지주','리츠'])?'가치주':'성장주');
+  const VAL=['배당','dividend','income','value','가치','채권','bond','treasury','bnd','shy','tlt','국고채','우량회사채','은행','금융','보험','통신','유틸','가스','식품','자동차','철강','화학','지주','리츠'];
+  if(isUs){   // 해외: 키워드가 확실할 때만, 아니면 미지정(분류 필요)
+    if(has(['dividend','value','income','bank','pharma','energy','utilit','insurance','reit']))tags.push('가치주');
+    else if(has(['growth','tech','nasdaq','semiconductor','innovation','software','internet']))tags.push('성장주');
+    return tags;
+  }
+  tags.push(has(VAL)?'가치주':'성장주');
   return tags;
 }
 
@@ -705,14 +750,14 @@ function migratePortfolio(p){
     }
     // 분류표에 없는 종목: 기존 태그는 지키고 빠진 칸(수출/내수·가치/성장)만 업종 키워드로 보충
     else if(tag4Once&&h.tags&&h.tags.length&&!h.tags.includes('헤지')&&!h.tags.includes('지수')){
-      const g=autoTagByName(h.name,isUs),t=h.tags.slice();
+      const g=autoTagByName(h.name,isUs,key),t=h.tags.slice();
       if(!isUs&&!t.some(x=>x==='수출주'||x==='내수주')){const e=g.find(x=>x==='수출주'||x==='내수주');if(e)t.push(e);}
       if(!t.some(x=>x==='가치주'||x==='성장주')){const v=g.find(x=>x==='가치주'||x==='성장주');if(v)t.push(v);}
       h.tags=t;
     }
     // 태그 없거나 6분류 아닌 값만 있으면 자동 분류
     else if(!h.tags||!h.tags.length||!h.tags.some(t=>VALID6.has(t))){
-      h.tags=autoTagByName(h.name,!!(h.ticker&&!h.code));
+      h.tags=autoTagByName(h.name,!!(h.ticker&&!h.code),h.ticker);
     }
     // 지수 추종 ETF는 가치/성장 단정 태그 제거 → '지수'(혼합)로 교정
     if(isIndexFund(h.name,h.ticker)&&!(h.tags||[]).includes('헤지')){
@@ -720,6 +765,13 @@ function migratePortfolio(p){
     }
   }));
   p.tag4=1;
+  // v7.9 1회 재분류: 해외는 US_STYLE(러셀 가치/성장), 국내는 수출/내수 바뀐 종목(에스티팜·알테오젠)만 덮어씀. 헤지·지수 ETF는 그대로
+  if(!p.tag5){const KR5=new Set(['237690','196170']);
+    lists.forEach(list=>list.forEach(h=>{const t=h.tags||[];if(t.includes('헤지')||isIndexFund(h.name,h.ticker))return;
+      const tk=String(h.ticker||'').toUpperCase();
+      if(!h.code&&US_STYLE[tk]){const size=t.find(x=>x==='대형주'||x==='소형주');h.tags=US_STYLE[tk].slice();if(size&&!h.tags.includes(size))h.tags=h.tags.filter(x=>x!=='대형주'&&x!=='소형주').concat(size);}
+      else if(h.code&&KR5.has(h.code))h.tags=CLASS4[h.code].slice();}));
+    p.tag5=1;}
   // 버전 숫자 비교 (문자열 '4.10'<'4.9' 버그 방지)
   const vn=parseFloat(p.ver||'0');
   if(vn<3.2)updateToV32(p);
@@ -2061,6 +2113,7 @@ function styleTiltCard(){
     const rows=B[key],total=rows.reduce((s,r)=>s+r.ev,0);
     if(!total)return keptEntries().some(e=>e.cat===key)?`<div style="margin-top:10px;font-size:11px;color:${T.amber}">${title}: 전 종목 🔒 장기보유 — 스타일 계산 대상 없음</div>`:'';
     const hedge=rows.filter(r=>(r.h.tags||[]).includes('헤지')).reduce((s,r)=>s+r.ev,0);
+    const ax0=STYLE_TARGETS[key][0],unc=rows.filter(r=>{const t=r.h.tags||[];return !t.includes('헤지')&&!t.includes(ax0.a)&&!t.includes(ax0.b)&&!(ax0.a==='가치주'&&t.includes('지수'));});
     const kept=keptEntries().filter(e=>e.cat===key);
     return `<div style="margin-top:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:${T.text};margin-bottom:6px"><span>${title}</span><span class="mono" style="color:${T.text3};font-weight:400">${won(total,true)}</span></div>
@@ -2086,6 +2139,7 @@ function styleTiltCard(){
         </div>`;}).join('')}
       <div onclick="showExtraCashModal('${key}')" class="tap" style="font-size:10px;color:${T.teal};margin-bottom:4px">＋ 배당·추가 현금 (이번 달) ${extraCash(key)?won(extraCash(key),true)+' ✎':'입력'}</div>
       ${key==='us'?usSmallNote(rows):''}
+      ${unc.length?`<div style="font-size:10px;color:${T.red};margin-bottom:2px">⚠ ${ax0.a}/${ax0.b} 분류 필요 ${unc.length}종목 (${unc.map(r=>esc(r.h.ticker||r.h.name)).join(', ')} · ${won(unc.reduce((s,r)=>s+r.ev,0),true)}) — 계산에서 빠짐, 종목 탭에서 지정</div>`:''}
       ${hedge>0?`<div style="font-size:10px;color:${T.text3}">🛡 헤지(인버스) ${(hedge/total*100).toFixed(1)}% — 스타일 계산 제외</div>`:''}
       ${kept.length?`<div style="font-size:10px;color:${T.amber}">🔒 장기보유 ${kept.length}종목 ${won(kept.reduce((s,e)=>s+entryValue(e),0),true)} — 스타일 계산 제외</div>`:''}
     </div>`;
@@ -3423,7 +3477,7 @@ function settingsScreen(){
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.8.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.9.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -3637,7 +3691,7 @@ function applyImport(){
       if(a>0)h[pf.avg]=a;
       upd++;
     }else if(r.action==='new'){
-      const tags=autoTagByName(r.name,r.cat==='us');
+      const tags=autoTagByName(r.name,r.cat==='us',code);
       const id='m'+Date.now()+Math.random().toString(36).slice(2,5);
       if(!code&&r.cat!=='kr'&&r.cat!=='gold'){errs.push(r.name+'(코드/티커 미입력)');return;}
       if(r.cat==='crypto'){
