@@ -333,8 +333,19 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  ok(run('ismState().s')==='down'&&run('econState().s')==='down','v7.6 둘 다 ↓ → 내수 '+run('JSON.stringify(econState())'));
  run("portfolio.switching.rate.push({ym:'2026-11',val:4.9},{ym:'2026-12',val:4.7},{ym:'2027-01',val:4.5})");
  ok(run('rateState().s')==='down','v7.6 10년물 ↓ → 성장');
+ // v7.8 신호 확인(#2): 경기 ↓ 전환은 1개월째 → 확인 대기, 목표는 직전 확정(수출) 유지
+ ok(run('econState().cf.pending')&&run('econState().cf.c')==='up'&&run('econState().cf.held')===1,'v7.8 경기 ↓ 1개월 → 확인 대기 '+run('JSON.stringify(econState().cf)'));
+ ok(run("sigState('econ')")==='up'&&run("styleTarget(findStyleAxis('kr.exp'))[sigState('econ')]")===75,'v7.8 대기 중 국내 목표 75 유지');
+ ok(run('overallSignal().sub').includes('⏳ 내수주 확인 대기 1/2개월'),'v7.8 대기 표시 '+run('overallSignal().sub'));
+ ok(run('renderSignalBox(overallSignal())').includes('확인 대기 1/2개월'),'v7.8 신호 박스 대기 표시');
+ run("portfolio.switching.ism.push({ym:'2027-03',val:50})");   // 한 달 더 ↓ → 2개월 연속 → 확정
+ ok(!run('econState().cf.pending')&&run('econState().cf.c')==='down'&&run('econState().cf.cSince')==='2027-04','v7.8 2개월 유지 → 내수 확정 '+run('JSON.stringify(econState().cf)'));
+ ok(run('rateState().cf.c')==='down','v7.8 금리 ↓ 확정 '+run('JSON.stringify(rateState().cf)'));
  ok(run('overallSignal().label').includes('내수주')&&run('overallSignal().label').includes('성장주'),'v7.6 신호 라벨');
- ok(run('overallSignal().sub').includes('경기 ↓ (소매판매 ↓ · ISM ↓) · 금리 ↓'),'v7.6 한 줄 요약 '+run('overallSignal().sub'));
+ ok(run('overallSignal().sub').includes('경기 ↓ (소매판매 ↓ · ISM ↓) · 금리 ↓')&&!run('overallSignal().sub').includes('확인 대기'),'v7.6 한 줄 요약 '+run('overallSignal().sub'));
+ // 휩쏘: 1개월만 뒤집혔다 돌아오면 확정 상태 그대로
+ ok(JSON.stringify(run("confirmSeries([{ym:'a',s:'up'},{ym:'b',s:'up'},{ym:'c',s:'down'},{ym:'d',s:'up'}])"))==='{"c":"up","cSince":"b","raw":"up","held":1,"pending":false}','v7.8 휩쏘 무시');
+ ok(run("confirmSeries([{ym:'a',s:'none'},{ym:'b',s:'up'}]).c")==='none'&&run("confirmSeries([{ym:'a',s:'none'},{ym:'b',s:'up'}]).pending"),'v7.8 첫 신호도 2개월 필요');
  let out=run("switchingScreen()");
  ok(out.includes('국내 수출 30 : 내수 70')&&out.includes('🏭 ISM 제조업 가격지수 → 경기')&&out.includes('💵 미 국채 10년물')&&!out.includes('2×2 칸'),'v7.6 스위칭 탭 표기');
  ok(!out.includes('undefined')&&!out.includes('NaN'),'v7.6 렌더 깨짐 없음');
@@ -371,6 +382,21 @@ run('portfolio.switching=JSON.parse(JSON.stringify(INIT.switching))');
  ok(JSON.stringify(run("autoTagByName('KODEX 은행',false)"))==='["내수주","가치주"]','v7.5 키워드 은행 → 내수·가치');
  ok(JSON.stringify(run("autoTagByName('TIGER 반도체TOP10',false)"))==='["수출주","대형주","성장주"]','v7.5 키워드 반도체 → 수출·성장');
  ok(!JSON.stringify(run("autoTagByName('Some Growth Fund',true)")).includes('수출'),'v7.5 해외는 수출/내수 없음');}
+// v7.8 현금흐름 우선(#3): 신규 현금으로 부족한 쪽 먼저, 남는 차이만 매도
+{const f=JSON.parse(run('JSON.stringify(cashFirstPlan(30,100,0.5,10))'));
+ ok(f.x===40&&f.c===10&&f.S===15&&f.months===4,'v7.8 현금 10 투입 후 매도 15 '+JSON.stringify(f));
+ const g=run('cashFirstPlan(30,100,0.5,100)');ok(g.c===40&&g.S===0&&g.months===1,'v7.8 현금으로 해결 → 매도 0');
+ ok(run('cashFirstPlan(30,100,0.5,0).S')===20&&run('cashFirstPlan(30,100,0.5,0).months')===Infinity,'v7.8 현금 없으면 전액 교체매매');
+ // 검증: 현금 c 투입 + 교체 S 후 부족한 쪽 비율 = 목표
+ ok(Math.abs((30+10+15)/(100+10)-0.5)<1e-9,'v7.8 조정 후 목표 비율 도달');
+ const us=run('bucketCash("us").C');ok(us>0,'v7.8 해외 월 적립 배정 '+us);
+ let out=run('styleTiltCard()');
+ ok(out.includes('① 현금 먼저')&&out.includes('② ')&&!out.includes('NaN')&&!out.includes('undefined'),'v7.8 스타일 카드 현금 우선 표시');
+ run("portfolio.switchCash={us:{amt:3000000,ym:ymNow()}}");
+ ok(run('extraCash("us")')===3000000&&Math.abs(run('bucketCash("us").C')-us-3000000)<1,'v7.8 추가 현금 합산');
+ out=run('styleTiltCard()');ok(out.includes('추가 300만')&&out.includes('매도 불필요'),'v7.8 추가 현금으로 매도 불필요');
+ run("portfolio.switchCash={us:{amt:3000000,ym:'2000-01'}}");ok(run('extraCash("us")')===0,'v7.8 지난달 추가 현금은 무효');
+ run("portfolio.switchCash={}");}
 // v7.7.1: 앱을 한동안 안 열어 ISM 달이 비면 빠진 달도 조회 (MA3 끊김 방지)
 (async()=>{
   run("portfolio.switching.ism=portfolio.switching.ism.filter(d=>d.ym<='2026-07')");
