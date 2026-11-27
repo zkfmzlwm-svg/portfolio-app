@@ -3485,14 +3485,21 @@ function settingsScreen(){
 const COIN_KO={'비트코인':'BTC','이더리움':'ETH','솔라나':'SOL','테더':'USDT','보라':'BORA',
   '디센트럴랜드':'MANA','리플':'XRP','도지코인':'DOGE','비트코인캐시':'BCH','이더리움클래식':'ETC',
   '카르다노':'ADA','스텔라루멘':'XLM','에이다':'ADA','트론':'TRX','체인링크':'LINK','폴리곤':'MATIC'};
-function normName(s){return(s||'').replace(/\(소수\)/g,'').replace(/소수$/,'').replace(/[\s·.,()\-_]/g,'').toLowerCase();}
+function normName(s){return(s||'').replace(/\(소수\)/g,'').replace(/소수$/,'').replace(/[\s·.,()\-_|｜]/g,'').toLowerCase();}
 function holdingKeys(e){
   const h=e.h,ks=[h.name,h.code,h.ticker,h.upbit&&h.upbit.split('-')[1]];
   if(e.cat==='crypto'){const sym=h.upbit&&h.upbit.split('-')[1];if(sym){ks.push(sym);for(const[ko,sy]of Object.entries(COIN_KO))if(sy===sym)ks.push(ko);}}
   return ks.filter(Boolean).map(normName);
 }
+const isTickerLike=n=>/^[A-Za-z][A-Za-z0-9.\-]{0,6}$/.test(String(n||'').trim());
+const isLatinName=n=>/^[A-Za-z0-9 .,&'\-]+$/.test(String(n||'').trim())&&/[A-Za-z]{2}/.test(n||'');
+const COIN_SYMS=new Set(Object.values(COIN_KO));
 function matchHoldingByName(pool,name){
   const nn=normName(name);if(!nn||nn.length<2)return null;
+  if(isTickerLike(name)){   // 티커는 정확 일치만 (부분 문자열 매칭 금지)
+    for(const e of pool)if(holdingKeys(e).includes(nn))return e;
+    return null;
+  }
   let best=null,bLen=0;
   for(const e of pool){for(const k of holdingKeys(e)){
     if(k===nn||k.includes(nn)||nn.includes(k)){if(k.length>bLen){bLen=k.length;best=e;}}
@@ -3577,8 +3584,15 @@ function parseSnapshotText(raw){
     const row={raw:line,name:m?m.h.name:name,entry:m,action:m?'match':'new',
       qty:null,cur:null,avg:null,cat:m?m.cat:'kr',code:'',extraQty:0,resolved:false};
     // 영문 대문자 티커(JNJ, BRK.B 등) 신규 종목은 해외로 우선 추정 — 검색 실패(오프라인)해도 국내로 잘못 들어가지 않게
-    if(!m&&/^[A-Z][A-Z0-9.\-]{0,6}$/.test(name)){row.cat='us';row.code=name;row.resolved=true;}
+    if(!m&&isTickerLike(name)){
+      const up=name.toUpperCase();
+      if(COIN_SYMS.has(up)){row.cat='crypto';row.code='KRW-'+up;}else{row.cat='us';row.code=up;}
+      row.name=up;row.resolved=true;
+    }else if(!m&&isLatinName(name))row.cat='us';   // 'Johnson & Johnson' 등 영문 이름 → 해외 우선, 코드는 검색
     assignNums(row,vals);
+    // 예전 버전에서 해외 티커가 국내로 잘못 저장된 경우(JNJ, 'JNJ |' 등, 6자리 코드 없음) → 해외로 이동 제안
+    if(m&&m.cat==='kr'&&isTickerLike(String(m.h.name).replace(/[|｜]/g,'').trim())&&!/^\d{6}$/.test(m.h.code||'')){
+      row.moveTo='us';row.name=String(m.h.name).replace(/[|｜]/g,'').trim().toUpperCase();}
     // 같은 종목이 여러 줄(정수/소수)이면 머지
     if(m){const ex=rows.find(r=>r.entry===m);if(ex){ex.qty=(ex.qty||0)+(row.qty||0);if(row.cur)ex.cur=row.cur;if(row.avg)ex.avg=row.avg;continue;}}
     rows.push(row);
@@ -3607,13 +3621,17 @@ async function resolveNewRows(seq){
   for(const r of importDraft.rows){
     if(r.action!=='new'||r.code)continue;
     try{
-      const coins=await searchCoin(r.name);
-      if(coins&&coins.length){r.cat='crypto';r.code=coins[0].code;r.resolved=true;}
+      const nn=normName(r.name),latin=isLatinName(r.name);
+      const coins=(await searchCoin(r.name)||[]).filter(c=>{const sym=c.code.replace('KRW-',''),[ko,en]=c.name.replace(')','').split('(');
+        return normName(sym)===nn||normName(ko)===nn||normName(en||'')===nn;});
+      if(coins.length){r.cat='crypto';r.code=coins[0].code;r.resolved=true;}
       else{
-        const nv=await searchNaver(r.name);
-        const kr=nv.find(x=>x.type==='kr'),us=nv.find(x=>x.type==='us');
-        if(kr){r.cat='kr';r.code=kr.code;r.resolved=true;r.krETF=/ETF|ETN|KODEX|TIGER|RISE|ACE|KBSTAR|HANARO|SOL|에프앤/i.test(r.name+' '+(kr.market||''));}
-        else if(us){r.cat='us';r.code=us.ticker||us.code;r.resolved=true;}
+        const nv=await searchNaver(r.name)||[];
+        // 이름/티커가 정확히 같은 결과 > (영문 이름이면) 해외 > 네이버 검색 순위 1위. 예전엔 국내를 무조건 우선해 '테슬라'→'TIGER 테슬라…' ETF로 들어갔음
+        const exact=nv.find(x=>normName(x.name)===nn||normName(x.ticker||'')===nn);
+        const pick=exact||(latin&&nv.find(x=>x.type==='us'))||nv[0];
+        if(pick&&pick.type==='kr'){r.cat='kr';r.code=pick.code;r.resolved=true;r.krETF=/ETF|ETN|KODEX|TIGER|RISE|ACE|KBSTAR|HANARO|SOL|에프앤/i.test(r.name+' '+(pick.market||''));}
+        else if(pick){r.cat='us';r.code=pick.ticker||pick.code;r.resolved=true;}
         else{const y=await searchYahoo(r.name);if(y&&y.length){r.cat='us';r.code=y[0].ticker;r.resolved=true;}}
       }
     }catch(e){}
@@ -3646,7 +3664,7 @@ function showImportPreview(){
       </div><div style="font-size:10px;color:${r.resolved?T.green:T.text3};margin-top:3px">${r.resolved?'✓ 코드 자동 검색됨 — 확인 후 적용하세요':'코드를 자동 검색하지 못했습니다 — 직접 입력하거나 무시하세요'}</div>`:'';
       return `<div style="background:${T.card};border:1px solid ${r.action==='ignore'?T.border:T.teal}33;border-radius:10px;padding:10px 12px;margin-bottom:7px;${r.action==='ignore'?'opacity:.5':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px">
-          <div style="min-width:0;flex:1"><span style="font-size:13px;font-weight:700;color:${T.text}">${esc(r.name)}</span> ${badge}${e?`<span style="font-size:10px;color:${T.text3};margin-left:4px">${({kr:'국내',us:'해외',bonds:'채권',gold:'금',crypto:'코인'})[r.cat]}</span>`:''}</div>
+          <div style="min-width:0;flex:1"><span style="font-size:13px;font-weight:700;color:${T.text}">${esc(r.name)}</span> ${badge}${e?`<span style="font-size:10px;color:${r.moveTo?T.amber:T.text3};margin-left:4px">${r.moveTo?'국내→해외 이동':({kr:'국내',us:'해외',bonds:'채권',gold:'금',crypto:'코인'})[r.cat]}</span>`:''}</div>
           ${sel}
         </div>
         ${r.action!=='ignore'?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
@@ -3685,14 +3703,23 @@ function impMiss(i,v){importDraft.missing[i].action=v;}
 // 미리보기 input onchange 바인딩(값 직렬화는 적용 시점에 DOM에서 읽음)
 function applyImport(){
   const d=importDraft;if(!d)return;
-  let upd=0,added=0,sold=0,removed=0;const errs=[];
+  let upd=0,added=0,sold=0,removed=0,moved=0;const errs=[];
   d.rows.forEach((r,i)=>{
     if(r.action==='ignore')return;
     const q=parseFloat(document.getElementById('impQ'+i)?.value);
     const c=parseFloat(document.getElementById('impC'+i)?.value);
     const a=parseFloat(document.getElementById('impA'+i)?.value);
     const code=(document.getElementById('impCode'+i)?.value||r.code||'').trim().toUpperCase();
-    if(r.action==='match'&&r.entry){
+    if(r.action==='match'&&r.entry&&r.moveTo==='us'){
+      const{h,cat}=r.entry,ex=portfolio.exRate||1,krw=!isUsdH(cat,h);
+      const conv=v=>v>0?(krw?Math.round(v/ex*100)/100:v):0;
+      removeHoldingEntry(cat,h);
+      const tk=r.name;
+      const nh={...h,name:tk,ticker:tk,qty:q>0?q:(h.qty||0),avg:a>0?a:conv(h.avg)||c||0,cur:c>0?c:conv(h.cur)||a||0,
+        tags:autoTagByName(tk,true,tk),usd:true};delete nh.code;   // id 유지 → 장기보유·거래내역 연결 유지
+      portfolio.holdings.us.push(nh);
+      upd++;moved++;
+    }else if(r.action==='match'&&r.entry){
       const{h,cat}=r.entry,pf=priceSpec(cat,h);
       if(q>0)h.qty=q;
       if(c>0)h[pf.cur]=c;
@@ -3729,7 +3756,7 @@ function applyImport(){
   portfolio.lastUpdated=today();
   save();closeModal();render();
   importDraft=null;
-  alert('📥 반영 완료\n기존 갱신: '+upd+' · 신규 추가: '+added+(sold?('\n전량매도 기록: '+sold):'')+(removed?('\n목록 제거: '+removed):'')+(errs.length?('\n\n⚠ 코드 없이 추가 실패:\n'+errs.slice(0,5).join('\n')):''));
+  alert('📥 반영 완료\n기존 갱신: '+upd+' · 신규 추가: '+added+(moved?('\n국내→해외 이동: '+moved):'')+(sold?('\n전량매도 기록: '+sold):'')+(removed?('\n목록 제거: '+removed):'')+(errs.length?('\n\n⚠ 코드 없이 추가 실패:\n'+errs.slice(0,5).join('\n')):''));
 }
 
 // ── 데이터 백업/복원 ──

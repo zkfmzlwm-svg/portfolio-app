@@ -14,6 +14,7 @@ const sb={console,window:{},localStorage:{_d:{},getItem(k){return this._d[k]??nu
 vm.createContext(sb);vm.runInContext(code,sb);
 const run=e=>vm.runInContext(e,sb);
 let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗ FAIL:',m);}};
+(async()=>{
 const P=t=>run(`parseSnapshotText(${JSON.stringify(t)}).rows.map(r=>({n:r.name,q:r.qty,c:r.cur,a:r.avg,cat:r.cat,code:r.code}))`);
 for(const t of['JNJ | 2 | 22','JNJ|2|22','JNJ,2,22','JNJ, 2, 22','JNJ\t2\t22','JNJ 2 22',' JNJ  |  2  |  22 ','JNJ ｜ 2 ｜ 22','JNJ | 2주 | $22']){
   const r=P(t);ok(r.length===1&&r[0].n==='JNJ'&&r[0].q===2&&r[0].a===22,'"'+t+'" → '+JSON.stringify(r));
@@ -32,4 +33,26 @@ run('applyImport()');
 const us=run('JSON.stringify(portfolio.holdings.us.slice(-1)[0])');
 ok(run('portfolio.holdings.us.length')===before+1,'해외 보유 1건 추가');
 ok(/"name":"JNJ"/.test(us)&&/"ticker":"JNJ"/.test(us)&&/"qty":2/.test(us),'JNJ 저장값 '+us);
+// v7.9.1b 해외 종목이 국내로 반영되던 문제
+{const r=P('aapl 3 180 150');ok(r[0].cat==='us'&&r[0].code==='AAPL'&&r[0].n==='AAPL','소문자 티커 → 해외 '+JSON.stringify(r));}
+{const r=P('Johnson & Johnson | 2 | 22');ok(r[0].cat==='us','영문 이름 → 해외 '+JSON.stringify(r));}
+{const r=P('ETH 0.5 4000000 3500000');ok(r[0].cat==='crypto','코인 심볼은 코인 '+JSON.stringify(r));}
+// 짧은 티커가 국내 ETF 이름에 부분 매칭되지 않음 (KO ⊂ KODEX)
+run("portfolio.holdings.kr_etfs.push({id:'tkx',name:'KODEX 200',code:'069500',qty:1,avg:1,cur:1,tags:[]})");
+{const r=P('KO 5 60 55');ok(r[0].cat==='us'&&r[0].n==='KO','KO는 KODEX에 매칭 안 됨 '+JSON.stringify(r));}
+// 예전 버전이 국내로 잘못 저장한 'JNJ |' → 해외로 이동
+run("portfolio.holdings.us=portfolio.holdings.us.filter(h=>h.ticker!=='JNJ');portfolio.holdings.kr_stocks.push({id:'bad1',name:'JNJ |',code:'',qty:2,avg:22,cur:22,tags:[]})");
+run(`document.getElementById('importText').value='JNJ | 2 | 23 | 22';parseHoldingsText();`);
+ok(run("importDraft.rows[0].moveTo")==='us','잘못 저장된 국내 JNJ → 이동 표시');
+run('applyImport()');
+ok(!run("portfolio.holdings.kr_stocks.some(h=>h.id==='bad1')"),'국내 목록에서 제거');
+const mv=run("JSON.stringify(portfolio.holdings.us.find(h=>h.id==='bad1'))");
+ok(/"name":"JNJ"/.test(mv)&&/"ticker":"JNJ"/.test(mv)&&/"usd":true/.test(mv)&&!/"code"/.test(mv),'해외로 이동(id 유지) '+mv);
+// 네이버 결과에 국내 ETF가 먼저 와도 이름이 정확한 해외 종목 선택
+await run(`searchCoin=async()=>[];searchNaver=async q=>[{type:'kr',code:'123456',name:'TIGER 미국테슬라채권혼합',market:'ETF'},{type:'us',code:'TSLA.O',ticker:'TSLA',name:'테슬라',market:'NASDAQ'}];
+  importDraft={rows:[{name:'테슬라',action:'new',cat:'kr',code:''}],missing:[]};resolveNewRows(-1)`);
+ok(run('importDraft.rows[0].cat')==='us'&&run('importDraft.rows[0].code')==='TSLA','테슬라 → 해외 TSLA '+run('JSON.stringify(importDraft.rows[0])'));
+await run(`searchNaver=async q=>[{type:'kr',code:'005930',name:'삼성전자',market:'KOSPI'}];importDraft={rows:[{name:'삼성전자',action:'new',cat:'kr',code:''}],missing:[]};resolveNewRows(-1)`);
+ok(run('importDraft.rows[0].cat')==='kr'&&run('importDraft.rows[0].code')==='005930','국내 종목은 국내');
 console.log(`smoke_import: ${pass} pass, ${fail} fail`);process.exit(fail?1:0);
+})();
