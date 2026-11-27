@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>포트폴리오 v7.9.0</title>
+<title>포트폴리오 v7.9.1</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;background:var(--bg,#04080F);overflow:hidden;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
@@ -3465,19 +3465,19 @@ function settingsScreen(){
     ${secL('거래내역 / 보유종목 화면 반영')}
     ${card(`
       <div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">증권사·업비트 앱의 <b>보유종목 화면을 복사</b>해 붙여넣으면 종목명·수량·현재가·평균가를 인식하고, <b>적용 전 미리 확인</b>할 수 있습니다. 국내/해외/채권/금/코인 전부 지원하며, 없어진 종목(전량 매도)도 잡아줍니다.</div>
-      <textarea id="importText" placeholder="예시)&#10;삼천당제약 13 170400 457713&#10;삼성전자 9 257500 295790&#10;소수 0.058985 257500 295790&#10;TIGER KRX금현물 328 13550 13957&#10;비트코인 0.07898433 89,952,000 122,291,612&#10;JOBY 51 7.15 10.04&#10;&#10;앱 화면 전체를 그대로 붙여넣어도 됩니다"
-        style="width:100%;height:150px;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:12px;font-size:12px;resize:none;outline:none;line-height:1.6;font-family:monospace"></textarea>
+      <textarea id="importText" oninput="importTextDraft=this.value" placeholder="예시)&#10;삼천당제약 13 170400 457713&#10;삼성전자 9 257500 295790&#10;소수 0.058985 257500 295790&#10;TIGER KRX금현물 328 13550 13957&#10;비트코인 0.07898433 89,952,000 122,291,612&#10;JOBY 51 7.15 10.04&#10;&#10;앱 화면 전체를 그대로 붙여넣어도 됩니다"
+        style="width:100%;height:150px;background:${T.bg};border:1px solid ${T.border};border-radius:10px;color:${T.text};padding:12px;font-size:12px;resize:none;outline:none;line-height:1.6;font-family:monospace">${esc(importTextDraft)}</textarea>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button onclick="parseHoldingsText()" class="tap" style="flex:1;padding:13px;background:${T.teal};color:#000;border-radius:12px;font-size:14px;font-weight:700">📥 불러와서 확인</button>
-        <button onclick="document.getElementById('importText').value=''" class="tap" style="padding:13px 16px;background:${T.bg2};color:${T.text2};border-radius:12px;font-size:14px">지우기</button>
+        <button onclick="importTextDraft='';document.getElementById('importText').value=''" class="tap" style="padding:13px 16px;background:${T.bg2};color:${T.text2};border-radius:12px;font-size:14px">지우기</button>
       </div>
-      <div style="font-size:10px;color:${T.text3};margin-top:8px;line-height:1.6">💡 각 줄: <b>종목명 수량 현재가 평균가</b> 순서(쉼표·평가금액·수익률이 섞여 있어도 자동 추정). 정수/소수 분리 표기, '1Q 은액티브'처럼 숫자로 시작하는 이름도 인식. 개별 매수·매도는 종목 카드의 ＋매수/－매도 버튼을 쓰세요.</div>`)}
+      <div style="font-size:10px;color:${T.text3};margin-top:8px;line-height:1.6">💡 각 줄: <b>종목명 수량 현재가 평균가</b> 순서. 구분자는 공백·탭·<b>|</b>·쉼표 모두 가능(예: <b>JNJ | 2 | 22</b>), 평가금액·수익률이 섞여 있어도 자동 추정. 정수/소수 분리 표기, '1Q 은액티브'처럼 숫자로 시작하는 이름도 인식. 개별 매수·매도는 종목 카드의 ＋매수/－매도 버튼을 쓰세요.</div>`)}
 
     ${secL('데이터 백업 / 복원')}
     ${card(`<div style="font-size:12px;color:${T.text2};line-height:1.6;margin-bottom:10px">보유종목·거래내역·목표비중·지표 데이터는 이 기기에만 저장됩니다. 기기 변경이나 앱 재설치에 대비해 JSON 파일로 백업하세요.</div>
       <button onclick="showBackup()" class="tap" style="width:100%;padding:12px;background:${T.blue};color:#fff;border-radius:12px;font-size:13px;font-weight:700">💾 백업 내보내기 / 복원</button>`)}
 
-    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.9.0</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
+    ${card(`<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:${T.text}">포트폴리오 v7.9.1</div><div style="font-size:11px;color:${T.text3};margin-top:4px">${portfolio.lastUpdated} · 거래 ${portfolio.txns.length}건</div><button onclick="resetPortfolio()" style="margin-top:12px;padding:8px 16px;background:${T.red}22;color:${T.red};border-radius:8px;font-size:12px">⚠ 초기화</button></div>`)}
   </div>`;
 }
 
@@ -3500,7 +3500,7 @@ function matchHoldingByName(pool,name){
   return best;
 }
 // 토큰 1개를 숫자로 (% 표시는 제외, '원' 접미사 허용)
-function parseNumTok(t){if(!t||t.includes('%'))return null;const x=t.replace(/[,+\s]/g,'').replace(/원$/,'');return /^-?\d+(\.\d+)?$/.test(x)?parseFloat(x):null;}
+function parseNumTok(t){if(!t||t.includes('%'))return null;const x=t.replace(/[,+\s]/g,'').replace(/^[$₩]/,'').replace(/(원|주|USD|KRW)$/i,'');return /^-?\d+(\.\d+)?$/.test(x)?parseFloat(x):null;}
 
 // 알려진 현재가/평단/수량과 대조해 숫자 배열을 (수량,현재가,평균가)로 배치
 function assignNums(row,nums){
@@ -3542,13 +3542,19 @@ function assignNums(row,nums){
   if(nums[2]!=null)row.avg=nums[2];
 }
 
+// 한 줄을 토큰으로: | · 탭 · ; · 쉼표(구분자) · 공백 모두 구분자로 처리, 천단위 쉼표(1,234,567)는 숫자로 유지
+function splitImportLine(line){
+  let s=String(line||'').replace(/[\u00a0\u3000]/g,' ').replace(/[│｜¦]/g,'|');
+  s=s.replace(/(\d),(?=\d{3}(?!\d))/g,'$1');   // 천단위 쉼표 제거
+  return s.split(/[|\t;,\s]+/).map(t=>t.trim()).filter(Boolean);
+}
 function parseSnapshotText(raw){
   const pool=flatHoldings(false);
-  const lines=raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const lines=String(raw||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const rows=[];
   for(const line of lines){
-    const clean=line.replace(/,/g,'');
-    const tokens=clean.split(/\s+/).filter(Boolean);
+    const tokens=splitImportLine(line);
+    if(!tokens.length)continue;
     const nums=tokens.map(parseNumTok);
     const numIdx=tokens.map((t,i)=>parseNumTok(t)!=null?i:-1).filter(i=>i>=0);
     const frac=/소수|나머지/.test(line);
@@ -3570,6 +3576,8 @@ function parseSnapshotText(raw){
     const m=matchHoldingByName(pool,name);
     const row={raw:line,name:m?m.h.name:name,entry:m,action:m?'match':'new',
       qty:null,cur:null,avg:null,cat:m?m.cat:'kr',code:'',extraQty:0,resolved:false};
+    // 영문 대문자 티커(JNJ, BRK.B 등) 신규 종목은 해외로 우선 추정 — 검색 실패(오프라인)해도 국내로 잘못 들어가지 않게
+    if(!m&&/^[A-Z][A-Z0-9.\-]{0,6}$/.test(name)){row.cat='us';row.code=name;row.resolved=true;}
     assignNums(row,vals);
     // 같은 종목이 여러 줄(정수/소수)이면 머지
     if(m){const ex=rows.find(r=>r.entry===m);if(ex){ex.qty=(ex.qty||0)+(row.qty||0);if(row.cur)ex.cur=row.cur;if(row.avg)ex.avg=row.avg;continue;}}
@@ -3583,7 +3591,7 @@ function parseSnapshotText(raw){
   return{rows,missing};
 }
 
-let importDraft=null,importSeq=0;
+let importDraft=null,importSeq=0,importTextDraft='';
 const CAT_OPTS=[['kr','국내 주식/ETF'],['us','해외 주식/ETF'],['bonds','채권'],['gold','금·광물'],['crypto','코인(업비트)']];
 
 function parseHoldingsText(){
@@ -4531,6 +4539,7 @@ document.addEventListener('touchend',e=>{
 const TABS=[{id:'home',ic:'◎',l:'홈'},{id:'holdings',ic:'≡',l:'종목'},{id:'switching',ic:'⇄',l:'스위칭'},{id:'rebal',ic:'⊖',l:'리밸런싱'},{id:'analysis',ic:'↗',l:'분석'},{id:'daytrade',ic:'⚡',l:'단타'},{id:'settings',ic:'◈',l:'설정'}];
 
 function render(){
+  const ae=document.activeElement,keep=ae&&ae.id&&/^(INPUT|TEXTAREA)$/.test(ae.tagName||'')?{id:ae.id,v:ae.value,s:ae.selectionStart,e:ae.selectionEnd,top:ae.scrollTop}:null;
   let content='';
   if(tab==='home')content=homeScreen();
   else if(tab==='holdings')content=holdingsScreen();
@@ -4554,6 +4563,7 @@ function render(){
   // 리밸런싱: 배분 가이드는 DOM 주입(슬라이더 oninput과 공유)
   if(tab==='rebal')renderAllocCards();
   if(tab==='daytrade')dtOnShow();
+  if(keep){const el=document.getElementById(keep.id);if(el&&el!==ae){el.value=keep.v;try{el.focus();if(keep.s!=null)el.setSelectionRange(keep.s,keep.e);el.scrollTop=keep.top||0;}catch(_){}}}
 }
 
 render();
